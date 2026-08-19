@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { put, list } from '@vercel/blob';
+import { put, get } from '@vercel/blob';
 
 const REQUIRED_COLUMNS = [
   '유저아이디',
@@ -209,7 +209,7 @@ export function parseWorkbook(buffer: Buffer): MemberMetrics {
 
 export async function saveSnapshot(snapshot: MemberSnapshot): Promise<void> {
   await put(SNAPSHOT_BLOB_PATH, JSON.stringify(snapshot), {
-    access: 'public',
+    access: 'private',
     addRandomSuffix: false,
     contentType: 'application/json',
     allowOverwrite: true,
@@ -218,12 +218,10 @@ export async function saveSnapshot(snapshot: MemberSnapshot): Promise<void> {
 
 export async function loadSnapshot(): Promise<MemberSnapshot | null> {
   try {
-    const { blobs } = await list({ prefix: SNAPSHOT_BLOB_PATH, limit: 1 });
-    const blob = blobs.find((b) => b.pathname === SNAPSHOT_BLOB_PATH);
-    if (!blob) return null;
-    const res = await fetch(blob.url, { cache: 'no-store' });
-    if (!res.ok) return null;
-    return (await res.json()) as MemberSnapshot;
+    const result = await get(SNAPSHOT_BLOB_PATH, { access: 'private', useCache: false });
+    if (!result || !result.stream) return null;
+    const text = await new Response(result.stream).text();
+    return JSON.parse(text) as MemberSnapshot;
   } catch {
     return null;
   }
