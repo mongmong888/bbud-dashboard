@@ -11,7 +11,17 @@ const BOTTOM = 270;
 const INNER_W = RIGHT - LEFT;
 const INNER_H = BOTTOM - TOP;
 
-export function TrendChart({ data, rangeLabel }: { data: TrendPoint[]; rangeLabel: string }) {
+export function TrendChart({
+  data,
+  rangeLabel,
+  issueDates,
+  onBarClick,
+}: {
+  data: TrendPoint[];
+  rangeLabel: string;
+  issueDates?: Set<string>;
+  onBarClick?: (point: TrendPoint) => void;
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const bars = useMemo(() => {
@@ -23,9 +33,9 @@ export function TrendChart({ data, rangeLabel }: { data: TrendPoint[]; rangeLabe
       const x = LEFT + i * slot + (slot - w) / 2;
       const h = (d.total / maxTotal) * INNER_H;
       const y = BOTTOM - h;
-      return { x, w, cx: x + w / 2, y, h, ...d };
+      return { x, w, cx: x + w / 2, y, h, hasIssue: issueDates?.has(d.date) ?? false, ...d };
     });
-  }, [data]);
+  }, [data, issueDates]);
 
   const gridLines = [0, 0.5, 1].map((f) => BOTTOM - f * INNER_H);
   const hover = hoverIdx !== null ? bars[hoverIdx] : null;
@@ -56,15 +66,17 @@ export function TrendChart({ data, rangeLabel }: { data: TrendPoint[]; rangeLabe
                 <text x={b.cx} y={308} fontSize={10.5} fill={colors.textFaint} textAnchor="middle">
                   {b.label}
                 </text>
+                {b.hasIssue && <circle cx={b.cx} cy={b.y - 22} r={4} fill="#F79009" />}
                 <rect
                   x={b.x - 6}
                   y={0}
                   width={b.w + 12}
                   height={300}
                   fill="transparent"
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: onBarClick ? 'pointer' : 'default' }}
                   onMouseEnter={() => setHoverIdx(i)}
                   onMouseLeave={() => setHoverIdx(null)}
+                  onClick={() => onBarClick?.(b)}
                 />
               </g>
             ))}
@@ -92,6 +104,12 @@ export function TrendChart({ data, rangeLabel }: { data: TrendPoint[]; rangeLabe
             <div style={{ fontWeight: 700, color: '#fff' }}>
               {hover.label} · DAU {fmt(hover.total)}
             </div>
+          </div>
+        )}
+
+        {onBarClick && bars.length > 0 && (
+          <div style={{ marginTop: 10, fontSize: 12, color: colors.textFaint }}>
+            막대를 클릭하면 해당 일자의 시간대별 유입량과 이슈 메모를 볼 수 있어요
           </div>
         )}
       </div>

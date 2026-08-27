@@ -7,6 +7,8 @@ import { Header, FilterBar } from './components/TopBar';
 import { KpiCards } from './components/KpiCards';
 import { TrendChart } from './components/TrendChart';
 import { PaginatedTable } from './components/PaginatedTable';
+import { DauModal } from './components/DauModal';
+import { AiAnalysisCard } from './components/AiAnalysisCard';
 import { colors, fmt, formatShortRange } from './components/shared';
 
 interface DashboardResponse {
@@ -41,6 +43,28 @@ export default function DashboardPage() {
   const [maxSelectableDate, setMaxSelectableDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [issues, setIssues] = useState<Record<string, string>>({});
+  const [modalPoint, setModalPoint] = useState<TrendPoint | null>(null);
+
+  useEffect(() => {
+    fetch('/api/dau-issues')
+      .then((res) => res.json())
+      .then((json) => setIssues(json.issues ?? {}))
+      .catch(() => {});
+  }, []);
+
+  async function handleSaveIssue(date: string, note: string) {
+    const res = await fetch('/api/dau-issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, note }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? '저장에 실패했어요.');
+    setIssues(json.issues ?? {});
+    setModalPoint(null);
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -179,7 +203,13 @@ export default function DashboardPage() {
       ) : (
         <>
           <KpiCards summary={data.summary} />
-          <TrendChart data={data.trend} rangeLabel={appliedRangeText} />
+          <TrendChart
+            data={data.trend}
+            rangeLabel={appliedRangeText}
+            issueDates={new Set(Object.keys(issues))}
+            onBarClick={(point) => setModalPoint(point)}
+          />
+          <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
             <PaginatedTable<EventIdRow>
@@ -236,6 +266,15 @@ export default function DashboardPage() {
             />
           </div>
         </>
+      )}
+
+      {modalPoint && (
+        <DauModal
+          point={modalPoint}
+          savedNote={issues[modalPoint.date] ?? ''}
+          onClose={() => setModalPoint(null)}
+          onSave={handleSaveIssue}
+        />
       )}
     </Shell>
   );

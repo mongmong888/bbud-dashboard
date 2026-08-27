@@ -127,6 +127,29 @@ export async function getTrend(period: Period): Promise<TrendPoint[]> {
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+export interface HourlyPoint {
+  hour: number;
+  users: number;
+}
+
+// 특정 하루의 시간대별(0~23시) 활성 사용자수. GA4 속성 타임존(Asia/Seoul) 기준.
+export async function getHourlyTraffic(date: string): Promise<HourlyPoint[]> {
+  const rows = await runReport({
+    property: 'web',
+    dimensions: [{ name: 'hour' }],
+    metrics: [{ name: 'activeUsers' }],
+    startDate: date,
+    endDate: date,
+  });
+
+  const byHour = new Map<number, number>();
+  for (const row of rows) {
+    byHour.set(Number(row.hour), toNum(row.activeUsers));
+  }
+
+  return Array.from({ length: 24 }, (_, hour) => ({ hour, users: byHour.get(hour) ?? 0 }));
+}
+
 // ---------- 3 & 4. 배너 / 팝업 성과 ----------
 
 export interface EventIdRow {
