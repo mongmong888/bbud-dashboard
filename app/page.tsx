@@ -209,8 +209,9 @@ export default function DashboardPage() {
             rangeLabel={appliedRangeText}
             issueDates={new Set(Object.keys(issues))}
             onBarClick={(point) => setModalPoint(point)}
-          />
-          <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} summary={data.summary} />
+          >
+            <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} summary={data.summary} />
+          </TrendChart>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
             <PaginatedTable<EventIdRow>

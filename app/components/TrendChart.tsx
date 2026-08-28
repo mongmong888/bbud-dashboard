@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { TrendPoint } from '@/lib/queries';
 import { card, colors, fmt, sectionSubtitle, sectionTitle } from './shared';
 
@@ -16,11 +16,13 @@ export function TrendChart({
   rangeLabel,
   issueDates,
   onBarClick,
+  children,
 }: {
   data: TrendPoint[];
   rangeLabel: string;
   issueDates?: Set<string>;
   onBarClick?: (point: TrendPoint) => void;
+  children?: ReactNode;
 }) {
   const bars = useMemo(() => {
     if (data.length === 0) return [];
@@ -84,6 +86,8 @@ export function TrendChart({
           </div>
         )}
       </div>
+
+      {children}
     </div>
   );
 }
