@@ -262,6 +262,9 @@ const PARTNER_EVENTS = {
   use: 'click-contact_use-button',
 } as const;
 
+// /service/ 경로에 걸리지만 실제 제휴사 입점 페이지가 아닌 pageTitle(브랜드 피드, 메인 등)은 집계에서 제외한다.
+const EXCLUDED_PARTNER_TITLES = new Set(['브랜드 피드 상세', '브랜드 피드', '비벗(b-bud)']);
+
 async function fetchPartnerViews(startDate: string, endDate: string): Promise<Map<string, number>> {
   const rows = await runReport({
     property: 'web',
@@ -304,6 +307,7 @@ export async function getPartners(period: Period): Promise<PartnerRow[]> {
   const names = new Set([...views.keys(), ...callCurr.keys(), ...kakaoCurr.keys(), ...useCurr.keys()]);
   const rows: PartnerRow[] = [];
   for (const name of names) {
+    if (EXCLUDED_PARTNER_TITLES.has(name)) continue;
     rows.push({
       name,
       view: views.get(name) ?? 0,
@@ -376,6 +380,7 @@ export async function getPartnerStatusRows(period: Period): Promise<PartnerStatu
   const names = new Set([...view.keys(), ...call.keys(), ...kakao.keys(), ...use.keys()]);
   const rows: PartnerStatusRow[] = [];
   for (const name of names) {
+    if (EXCLUDED_PARTNER_TITLES.has(name)) continue;
     rows.push({
       name,
       viewEvent: view.get(name)?.event ?? 0,

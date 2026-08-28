@@ -64,6 +64,7 @@ export function Sidebar() {
               borderRadius: 9,
               fontSize: 13.5,
               fontWeight: 600,
+              textDecoration: 'none',
               background: active ? colors.primaryBg : 'transparent',
               color: active ? colors.primary : colors.textMuted,
             }}

@@ -189,6 +189,8 @@ function BannerAdsBody({
   }
 
   const activeRows = data.bannerAdsByPlacement[activeTab] ?? [];
+  const isPopupTab = activeTab === '팝업';
+  const activeColumns = isPopupTab ? adColumns.map((c) => (c.header === '배너명' ? { ...c, header: '팝업명' } : c)) : adColumns;
 
   return (
     <>
@@ -228,12 +230,12 @@ function BannerAdsBody({
       {/* 구좌 선택 탭 + 개별 배너 테이블 */}
       <div style={{ ...card, marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-          {PLACEMENT_KEYWORDS.map((p) => {
-            const active = activeTab === p;
+          {data.placementAgg.map((p) => {
+            const active = activeTab === p.name;
             return (
               <button
-                key={p}
-                onClick={() => onSelectTab(p)}
+                key={p.name}
+                onClick={() => onSelectTab(p.name)}
                 style={{
                   border: `1px solid ${active ? colors.primary : colors.border}`,
                   background: active ? colors.primaryBg : '#fff',
@@ -246,17 +248,17 @@ function BannerAdsBody({
                   whiteSpace: 'nowrap',
                 }}
               >
-                {p}
+                {p.name}
               </button>
             );
           })}
         </div>
         <PaginatedTable<AdRow>
-          title={`${activeTab} 배너 성과`}
+          title={isPopupTab ? '팝업 성과' : `${activeTab} 배너 성과`}
           subtitle="노출수 내림차순 정렬"
           rows={activeRows}
-          columns={adColumns}
-          emptyMessage="이 구좌에는 해당 기간에 집계된 배너 이벤트가 없어요"
+          columns={activeColumns}
+          emptyMessage={isPopupTab ? '해당 기간에 집계된 팝업 이벤트가 없어요' : '이 구좌에는 해당 기간에 집계된 배너 이벤트가 없어요'}
           wrapInCard={false}
         />
       </div>

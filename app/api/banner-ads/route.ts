@@ -39,12 +39,23 @@ export async function GET(req: NextRequest) {
       bannerAdsByPlacement[placement] = mergePeriods(rows, bannerPeriods);
     }
 
+    const popupAds = mergePeriods(popupRows, popupPeriods);
+    const POPUP_PLACEMENT_NAME = '팝업';
+    bannerAdsByPlacement[POPUP_PLACEMENT_NAME] = popupAds;
+
+    const popupView = popupRows.reduce((a, r) => a + r.view, 0);
+    const popupClick = popupRows.reduce((a, r) => a + r.click, 0);
+    const placementAgg = [
+      ...bannerData.placementAgg,
+      { name: POPUP_PLACEMENT_NAME, view: popupView, click: popupClick, ctr: popupView > 0 ? (popupClick / popupView) * 100 : 0 },
+    ].sort((a, b) => b.view - a.view);
+
     return NextResponse.json({
       period,
       maxSelectableDate: getMaxSelectableDate(),
-      placementAgg: bannerData.placementAgg,
+      placementAgg,
       bannerAdsByPlacement,
-      popupAds: mergePeriods(popupRows, popupPeriods),
+      popupAds,
     });
   } catch (err) {
     console.error('배너 광고 데이터 조회 실패', err);
