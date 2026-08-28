@@ -10,6 +10,7 @@ export interface Column<T> {
 }
 
 const PER_PAGE = 10;
+const PAGE_WINDOW = 5;
 
 export function PaginatedTable<T>({
   title,
@@ -37,6 +38,10 @@ export function PaginatedTable<T>({
 
   const clamped = Math.min(page, totalPages);
   const slice = rows.slice((clamped - 1) * PER_PAGE, clamped * PER_PAGE);
+
+  const windowStart = Math.floor((clamped - 1) / PAGE_WINDOW) * PAGE_WINDOW + 1;
+  const windowEnd = Math.min(windowStart + PAGE_WINDOW - 1, totalPages);
+  const pageNumbers = Array.from({ length: windowEnd - windowStart + 1 }, (_, i) => windowStart + i);
 
   return (
     <div style={wrapInCard ? { ...card, minWidth: 0 } : { minWidth: 0 }}>
@@ -89,15 +94,23 @@ export function PaginatedTable<T>({
 
           {totalPages > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginTop: 14 }}>
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} style={navBtnStyle}>
+              <button
+                onClick={() => setPage(Math.max(1, windowStart - 1))}
+                disabled={windowStart === 1}
+                style={{ ...navBtnStyle, opacity: windowStart === 1 ? 0.4 : 1, cursor: windowStart === 1 ? 'default' : 'pointer' }}
+              >
                 ‹
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+              {pageNumbers.map((n) => (
                 <button key={n} onClick={() => setPage(n)} style={pageBtnStyle(n === clamped)}>
                   {n}
                 </button>
               ))}
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} style={navBtnStyle}>
+              <button
+                onClick={() => setPage(Math.min(totalPages, windowEnd + 1))}
+                disabled={windowEnd === totalPages}
+                style={{ ...navBtnStyle, opacity: windowEnd === totalPages ? 0.4 : 1, cursor: windowEnd === totalPages ? 'default' : 'pointer' }}
+              >
                 ›
               </button>
             </div>

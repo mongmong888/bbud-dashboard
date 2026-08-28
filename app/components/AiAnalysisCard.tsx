@@ -1,11 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { TrendPoint } from '@/lib/queries';
+import { SummaryData, TrendPoint } from '@/lib/queries';
 import { AiAnalysisResult } from '@/lib/gemini';
 import { card, colors } from './shared';
 
-export function AiAnalysisCard({ trend, rangeLabel }: { trend: TrendPoint[]; rangeLabel: string }) {
+export function AiAnalysisCard({
+  trend,
+  rangeLabel,
+  summary,
+}: {
+  trend: TrendPoint[];
+  rangeLabel: string;
+  summary: SummaryData;
+}) {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AiAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +25,7 @@ export function AiAnalysisCard({ trend, rangeLabel }: { trend: TrendPoint[]; ran
       const res = await fetch('/api/ai-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trend, rangeLabel }),
+        body: JSON.stringify({ trend, rangeLabel, summary }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'AI 분석에 실패했어요.');
@@ -93,16 +101,32 @@ export function AiAnalysisCard({ trend, rangeLabel }: { trend: TrendPoint[]; ran
           <div style={{ background: '#FAFAFF', border: '1px solid #ECE9FE', borderRadius: 12, padding: '16px 18px', fontSize: 14, fontWeight: 700, color: '#5925DC', marginBottom: 14 }}>
             {result.headline}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 14 }}>
-            {result.bullets.map((b, i) => (
-              <div key={i} style={{ border: `1px solid ${colors.headerBorder}`, borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#7A5AF8', letterSpacing: '0.4px', marginBottom: 6 }}>{b.label}</div>
-                <div style={{ fontSize: 13, color: colors.textMuted, lineHeight: 1.55 }}>{b.text}</div>
-              </div>
-            ))}
-          </div>
+          {result.insights.length === 0 ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', fontSize: 13, color: colors.textFaint }}>
+              이번 기간 데이터에서는 특별히 짚을 만한 인사이트가 없어요.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {result.insights.map((insight, i) => (
+                <div key={i} style={{ border: `1px solid ${colors.headerBorder}`, borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <InsightRow label="수치 근거" text={insight.evidence} />
+                  <InsightRow label="의미" text={insight.meaning} />
+                  <InsightRow label="제안 액션" text={insight.action} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function InsightRow({ label, text }: { label: string; text: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#7A5AF8', letterSpacing: '0.4px', flexShrink: 0, width: 66 }}>{label}</div>
+      <div style={{ fontSize: 13, color: colors.textMuted, lineHeight: 1.55 }}>{text}</div>
     </div>
   );
 }

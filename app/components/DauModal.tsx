@@ -18,11 +18,13 @@ const INNER_H = BOTTOM - TOP;
 export function DauModal({
   point,
   savedNote,
+  maxUsers,
   onClose,
   onSave,
 }: {
   point: TrendPoint;
   savedNote: string;
+  maxUsers: number;
   onClose: () => void;
   onSave: (date: string, note: string) => Promise<void>;
 }) {
@@ -61,7 +63,7 @@ export function DauModal({
 
   const geometry = useMemo(() => {
     if (!hours) return null;
-    const maxVal = Math.max(...hours.map((h) => h.users), 1) * 1.2;
+    const maxVal = Math.max(maxUsers, ...hours.map((h) => h.users), 1) * 1.2;
     const slot = INNER_W / 24;
     const barW = Math.min(slot * 0.6, 20);
     const bars = hours.map((h) => {
@@ -72,7 +74,7 @@ export function DauModal({
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ y: BOTTOM - f * INNER_H, value: Math.round(maxVal * f) }));
     const peak = hours.reduce((a, b) => (b.users > a.users ? b : a), hours[0]);
     return { bars, yTicks, peakHour: `${String(peak.hour).padStart(2, '0')}시` };
-  }, [hours]);
+  }, [hours, maxUsers]);
 
   async function handleSave() {
     setSaving(true);

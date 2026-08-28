@@ -20,6 +20,7 @@ interface DashboardResponse {
   popups: EventIdRow[];
   partners: PartnerRow[];
   topPages: TopPageRow[];
+  hourlyMax: number;
 }
 
 const PRESET_LABEL: Record<Preset, string> = {
@@ -209,7 +210,7 @@ export default function DashboardPage() {
             issueDates={new Set(Object.keys(issues))}
             onBarClick={(point) => setModalPoint(point)}
           />
-          <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} />
+          <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} summary={data.summary} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
             <PaginatedTable<EventIdRow>
@@ -272,6 +273,7 @@ export default function DashboardPage() {
         <DauModal
           point={modalPoint}
           savedNote={issues[modalPoint.date] ?? ''}
+          maxUsers={data.hourlyMax}
           onClose={() => setModalPoint(null)}
           onSave={handleSaveIssue}
         />

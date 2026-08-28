@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolvePeriod, isDateRangeError, getMaxSelectableDate, Preset } from '@/lib/ga4';
-import { getSummary, getTrend, getBanners, getPopups, getPartners, getTopPages, getHourlyMaxInRange } from '@/lib/queries';
+import { getPartnerStatusRows } from '@/lib/queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,29 +16,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [summary, trend, banners, popups, partners, topPages, hourlyMax] = await Promise.all([
-      getSummary(period),
-      getTrend(period),
-      getBanners(period),
-      getPopups(period),
-      getPartners(period),
-      getTopPages(period),
-      getHourlyMaxInRange(period.startDate, period.endDate),
-    ]);
+    const rows = await getPartnerStatusRows(period);
 
     return NextResponse.json({
       period,
       maxSelectableDate: getMaxSelectableDate(),
-      summary,
-      trend,
-      banners,
-      popups,
-      partners,
-      topPages,
-      hourlyMax,
+      rows,
     });
   } catch (err) {
-    console.error('GA4 dashboard fetch failed', err);
+    console.error('제휴사 현황 데이터 조회 실패', err);
     return NextResponse.json(
       { error: '데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.' },
       { status: 502 }

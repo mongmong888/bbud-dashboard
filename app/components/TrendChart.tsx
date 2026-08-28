@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { TrendPoint } from '@/lib/queries';
 import { card, colors, fmt, sectionSubtitle, sectionTitle } from './shared';
 
@@ -22,8 +22,6 @@ export function TrendChart({
   issueDates?: Set<string>;
   onBarClick?: (point: TrendPoint) => void;
 }) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-
   const bars = useMemo(() => {
     if (data.length === 0) return [];
     const maxTotal = Math.max(...data.map((d) => d.total), 1) * 1.25;
@@ -38,7 +36,6 @@ export function TrendChart({
   }, [data, issueDates]);
 
   const gridLines = [0, 0.5, 1].map((f) => BOTTOM - f * INNER_H);
-  const hover = hoverIdx !== null ? bars[hoverIdx] : null;
 
   return (
     <div style={{ ...card, marginBottom: 24 }}>
@@ -74,37 +71,11 @@ export function TrendChart({
                   height={300}
                   fill="transparent"
                   style={{ cursor: onBarClick ? 'pointer' : 'default' }}
-                  onMouseEnter={() => setHoverIdx(i)}
-                  onMouseLeave={() => setHoverIdx(null)}
                   onClick={() => onBarClick?.(b)}
                 />
               </g>
             ))}
           </svg>
-        )}
-
-        {hover && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 6,
-              left: `${(hover.cx / 1040) * 100}%`,
-              transform: 'translateX(-50%)',
-              background: colors.textDark,
-              color: '#fff',
-              borderRadius: 10,
-              padding: '10px 14px',
-              fontSize: 12,
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-              boxShadow: '0 8px 20px rgba(16,24,40,0.25)',
-              zIndex: 5,
-            }}
-          >
-            <div style={{ fontWeight: 700, color: '#fff' }}>
-              {hover.label} · DAU {fmt(hover.total)}
-            </div>
-          </div>
         )}
 
         {onBarClick && bars.length > 0 && (

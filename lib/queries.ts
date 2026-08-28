@@ -6,6 +6,7 @@ import {
   andFilter,
   orFilter,
   Period,
+  DimensionFilter,
 } from './ga4';
 import { PLACEMENT_KEYWORDS, UNCLASSIFIED_PLACEMENT, classifyPlacement } from './placements';
 import { fetchPushSentHistory } from './notion';
@@ -113,6 +114,16 @@ function formatDateLabel(yyyymmdd: string): string {
   return `${month}/${day}`;
 }
 
+const WEEKDAY_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
+function formatDateLabelWithWeekday(yyyymmdd: string): string {
+  const year = parseInt(yyyymmdd.slice(0, 4), 10);
+  const month = parseInt(yyyymmdd.slice(4, 6), 10);
+  const day = parseInt(yyyymmdd.slice(6, 8), 10);
+  const weekday = WEEKDAY_KR[new Date(year, month - 1, day).getDay()];
+  return `${month}/${String(day).padStart(2, '0')}(${weekday})`;
+}
+
 export async function getTrend(period: Period): Promise<TrendPoint[]> {
   const rows = await runReport({
     property: 'web',
@@ -123,7 +134,7 @@ export async function getTrend(period: Period): Promise<TrendPoint[]> {
   });
 
   return rows
-    .map((row) => ({ date: row.date, label: formatDateLabel(row.date), total: toNum(row.activeUsers) }))
+    .map((row) => ({ date: row.date, label: formatDateLabelWithWeekday(row.date), total: toNum(row.activeUsers) }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
@@ -148,6 +159,19 @@ export async function getHourlyTraffic(date: string): Promise<HourlyPoint[]> {
   }
 
   return Array.from({ length: 24 }, (_, hour) => ({ hour, users: byHour.get(hour) ?? 0 }));
+}
+
+// 조회 기간 전체에서 (날짜, 시간대) 조합 중 가장 높은 활성 사용자수. DAU 팝업들의 Y축 기준을 통일하는 데 쓰인다.
+export async function getHourlyMaxInRange(startDate: string, endDate: string): Promise<number> {
+  const rows = await runReport({
+    property: 'web',
+    dimensions: [{ name: 'date' }, { name: 'hour' }],
+    metrics: [{ name: 'activeUsers' }],
+    startDate,
+    endDate,
+  });
+
+  return rows.reduce((max, row) => Math.max(max, toNum(row.activeUsers)), 0);
 }
 
 // ---------- 3 & 4. 배너 / 팝업 성과 ----------
@@ -289,6 +313,82 @@ export async function getPartners(period: Period): Promise<PartnerRow[]> {
     });
   }
   return rows.sort((a, b) => b.view - a.view);
+}
+
+// ---------- 제휴사 현황 (지표별 이벤트 수 / 활성 사용자 수 구분) ----------
+
+export interface PartnerStatusRow {
+  name: string;
+  viewEvent: number;
+  viewUsers: number;
+  callEvent: number;
+  callUsers: number;
+  kakaoEvent: number;
+  kakaoUsers: number;
+  useEvent: number;
+  useUsers: number;
+}
+
+async function fetchPartnerMetricPair(
+  eventMetric: string,
+  dimensionFilter: DimensionFilter,
+  startDate: string,
+  endDate: string
+): Promise<Map<string, { event: number; users: number }>> {
+  const rows = await runReport({
+    property: 'web',
+    dimensions: [{ name: 'pageTitle' }],
+    metrics: [{ name: eventMetric }, { name: 'activeUsers' }],
+    startDate,
+    endDate,
+    dimensionFilter,
+  });
+  const map = new Map<string, { event: number; users: number }>();
+  for (const row of rows) {
+    map.set(row.pageTitle, { event: toNum(row[eventMetric]), users: toNum(row.activeUsers) });
+  }
+  return map;
+}
+
+export async function getPartnerStatusRows(period: Period): Promise<PartnerStatusRow[]> {
+  const [view, call, kakao, use] = await Promise.all([
+    fetchPartnerMetricPair('screenPageViews', pathContainsFilter(SERVICE_PATH), period.startDate, period.endDate),
+    fetchPartnerMetricPair(
+      'eventCount',
+      andFilter(eventNameFilter(PARTNER_EVENTS.call), pathContainsFilter(SERVICE_PATH)),
+      period.startDate,
+      period.endDate
+    ),
+    fetchPartnerMetricPair(
+      'eventCount',
+      andFilter(eventNameFilter(PARTNER_EVENTS.kakao), pathContainsFilter(SERVICE_PATH)),
+      period.startDate,
+      period.endDate
+    ),
+    fetchPartnerMetricPair(
+      'eventCount',
+      andFilter(eventNameFilter(PARTNER_EVENTS.use), pathContainsFilter(SERVICE_PATH)),
+      period.startDate,
+      period.endDate
+    ),
+  ]);
+
+  const names = new Set([...view.keys(), ...call.keys(), ...kakao.keys(), ...use.keys()]);
+  const rows: PartnerStatusRow[] = [];
+  for (const name of names) {
+    rows.push({
+      name,
+      viewEvent: view.get(name)?.event ?? 0,
+      viewUsers: view.get(name)?.users ?? 0,
+      callEvent: call.get(name)?.event ?? 0,
+      callUsers: call.get(name)?.users ?? 0,
+      kakaoEvent: kakao.get(name)?.event ?? 0,
+      kakaoUsers: kakao.get(name)?.users ?? 0,
+      useEvent: use.get(name)?.event ?? 0,
+      useUsers: use.get(name)?.users ?? 0,
+    });
+  }
+  return rows.sort((a, b) => b.viewEvent - a.viewEvent);
 }
 
 // ---------- 6. 인기 페이지 Top N ----------
