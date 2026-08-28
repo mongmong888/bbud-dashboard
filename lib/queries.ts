@@ -423,9 +423,32 @@ export async function getTopPages(period: Period): Promise<TopPageRow[]> {
 
 export interface SimpleIdRow {
   name: string;
-  view: number;
-  click: number;
+  viewEvent: number;
+  viewUsers: number;
+  clickEvent: number;
+  clickUsers: number;
   ctr: number;
+}
+
+async function fetchEventIdMetricPair(
+  idDimension: string,
+  eventName: string,
+  startDate: string,
+  endDate: string
+): Promise<Map<string, { event: number; users: number }>> {
+  const rows = await runReport({
+    property: 'marketing',
+    dimensions: [{ name: idDimension }],
+    metrics: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+    startDate,
+    endDate,
+    dimensionFilter: eventNameFilter(eventName),
+  });
+  const map = new Map<string, { event: number; users: number }>();
+  for (const row of rows) {
+    map.set(row[idDimension], { event: toNum(row.eventCount), users: toNum(row.activeUsers) });
+  }
+  return map;
 }
 
 async function getSimpleIdRows(
@@ -436,23 +459,32 @@ async function getSimpleIdRows(
   endDate: string
 ): Promise<SimpleIdRow[]> {
   const [viewCounts, clickCounts] = await Promise.all([
-    fetchEventIdCounts('marketing', idDimension, viewEvent, startDate, endDate),
-    fetchEventIdCounts('marketing', idDimension, clickEvent, startDate, endDate),
+    fetchEventIdMetricPair(idDimension, viewEvent, startDate, endDate),
+    fetchEventIdMetricPair(idDimension, clickEvent, startDate, endDate),
   ]);
   const names = new Set([...viewCounts.keys(), ...clickCounts.keys()]);
   const rows: SimpleIdRow[] = [];
   for (const name of names) {
-    const view = viewCounts.get(name) ?? 0;
-    const click = clickCounts.get(name) ?? 0;
-    rows.push({ name, view, click, ctr: view > 0 ? (click / view) * 100 : 0 });
+    const viewEventCount = viewCounts.get(name)?.event ?? 0;
+    const clickEventCount = clickCounts.get(name)?.event ?? 0;
+    rows.push({
+      name,
+      viewEvent: viewEventCount,
+      viewUsers: viewCounts.get(name)?.users ?? 0,
+      clickEvent: clickEventCount,
+      clickUsers: clickCounts.get(name)?.users ?? 0,
+      ctr: viewEventCount > 0 ? (clickEventCount / viewEventCount) * 100 : 0,
+    });
   }
-  return rows.sort((a, b) => b.view - a.view);
+  return rows.sort((a, b) => b.viewEvent - a.viewEvent);
 }
 
 export interface PlacementAgg {
   name: string;
-  view: number;
-  click: number;
+  viewEvent: number;
+  viewUsers: number;
+  clickEvent: number;
+  clickUsers: number;
   ctr: number;
 }
 
@@ -472,15 +504,18 @@ export async function getBannerAdsData(period: Period): Promise<BannerAdsData> {
     bannerAdsByPlacement[placement].push(row);
   }
   for (const placement of PLACEMENT_KEYWORDS) {
-    bannerAdsByPlacement[placement].sort((a, b) => b.view - a.view);
+    bannerAdsByPlacement[placement].sort((a, b) => b.viewEvent - a.viewEvent);
   }
 
+  // 구좌 내 여러 배너의 활성 사용자 수를 단순 합산하므로, 같은 구좌의 배너를 여러 개 본 유저는 중복 집계될 수 있다.
   const placementAgg: PlacementAgg[] = PLACEMENT_KEYWORDS.map((name) => {
     const group = bannerAdsByPlacement[name];
-    const view = group.reduce((a, r) => a + r.view, 0);
-    const click = group.reduce((a, r) => a + r.click, 0);
-    return { name, view, click, ctr: view > 0 ? (click / view) * 100 : 0 };
-  }).sort((a, b) => b.view - a.view);
+    const viewEvent = group.reduce((a, r) => a + r.viewEvent, 0);
+    const viewUsers = group.reduce((a, r) => a + r.viewUsers, 0);
+    const clickEvent = group.reduce((a, r) => a + r.clickEvent, 0);
+    const clickUsers = group.reduce((a, r) => a + r.clickUsers, 0);
+    return { name, viewEvent, viewUsers, clickEvent, clickUsers, ctr: viewEvent > 0 ? (clickEvent / viewEvent) * 100 : 0 };
+  }).sort((a, b) => b.viewEvent - a.viewEvent);
 
   return { placementAgg, bannerAdsByPlacement };
 }

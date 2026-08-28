@@ -43,12 +43,21 @@ export async function GET(req: NextRequest) {
     const POPUP_PLACEMENT_NAME = '팝업';
     bannerAdsByPlacement[POPUP_PLACEMENT_NAME] = popupAds;
 
-    const popupView = popupRows.reduce((a, r) => a + r.view, 0);
-    const popupClick = popupRows.reduce((a, r) => a + r.click, 0);
+    const popupViewEvent = popupRows.reduce((a, r) => a + r.viewEvent, 0);
+    const popupViewUsers = popupRows.reduce((a, r) => a + r.viewUsers, 0);
+    const popupClickEvent = popupRows.reduce((a, r) => a + r.clickEvent, 0);
+    const popupClickUsers = popupRows.reduce((a, r) => a + r.clickUsers, 0);
     const placementAgg = [
       ...bannerData.placementAgg,
-      { name: POPUP_PLACEMENT_NAME, view: popupView, click: popupClick, ctr: popupView > 0 ? (popupClick / popupView) * 100 : 0 },
-    ].sort((a, b) => b.view - a.view);
+      {
+        name: POPUP_PLACEMENT_NAME,
+        viewEvent: popupViewEvent,
+        viewUsers: popupViewUsers,
+        clickEvent: popupClickEvent,
+        clickUsers: popupClickUsers,
+        ctr: popupViewEvent > 0 ? (popupClickEvent / popupViewEvent) * 100 : 0,
+      },
+    ].sort((a, b) => b.viewEvent - a.viewEvent);
 
     return NextResponse.json({
       period,

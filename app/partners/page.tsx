@@ -5,7 +5,14 @@ import { Preset } from '@/lib/ga4';
 import { PartnerStatusRow } from '@/lib/queries';
 import { FilterBar } from '../components/TopBar';
 import { card, colors, formatShortRange } from '../components/shared';
-import { PartnerStatusTable } from '../components/PartnerStatusTable';
+import { GroupedMetricTable } from '../components/GroupedMetricTable';
+
+const PARTNER_METRIC_GROUPS = [
+  { key: 'view', label: '조회수', eventValue: (r: PartnerStatusRow) => r.viewEvent, usersValue: (r: PartnerStatusRow) => r.viewUsers },
+  { key: 'call', label: '전화 클릭', eventValue: (r: PartnerStatusRow) => r.callEvent, usersValue: (r: PartnerStatusRow) => r.callUsers },
+  { key: 'kakao', label: '카카오 클릭', eventValue: (r: PartnerStatusRow) => r.kakaoEvent, usersValue: (r: PartnerStatusRow) => r.kakaoUsers },
+  { key: 'use', label: '이용하기 클릭', eventValue: (r: PartnerStatusRow) => r.useEvent, usersValue: (r: PartnerStatusRow) => r.useUsers },
+];
 
 interface PartnersResponse {
   period: { startDate: string; endDate: string };
@@ -141,9 +148,15 @@ export default function PartnersPage() {
         )}
 
         {data && (
-          <div style={card}>
-            <PartnerStatusTable rows={data.rows} emptyMessage="해당 기간에 조회 또는 클릭이 발생한 제휴사가 없어요" />
-          </div>
+          <GroupedMetricTable<PartnerStatusRow>
+            title="제휴사 입점 성과"
+            subtitle="조회수(이벤트 수) 내림차순 정렬 · 지표별 이벤트 수 / 활성 사용자 수 구분"
+            nameHeader="업체명"
+            nameValue={(r) => r.name}
+            metricGroups={PARTNER_METRIC_GROUPS}
+            rows={data.rows}
+            emptyMessage="해당 기간에 조회 또는 클릭이 발생한 제휴사가 없어요"
+          />
         )}
       </div>
     </div>

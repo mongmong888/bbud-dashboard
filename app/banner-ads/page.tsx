@@ -6,7 +6,12 @@ import { PlacementAgg, AdRow } from '@/lib/queries';
 import { PLACEMENT_KEYWORDS } from '@/lib/placements';
 import { FilterBar } from '../components/TopBar';
 import { card, colors, fmt, formatShortRange, sectionSubtitle, sectionTitle } from '../components/shared';
-import { PaginatedTable } from '../components/PaginatedTable';
+import { GroupedMetricTable, MetricGroup } from '../components/GroupedMetricTable';
+
+const AD_METRIC_GROUPS: MetricGroup<AdRow>[] = [
+  { key: 'view', label: '노출수', eventValue: (r) => r.viewEvent, usersValue: (r) => r.viewUsers },
+  { key: 'click', label: '클릭수', eventValue: (r) => r.clickEvent, usersValue: (r) => r.clickUsers },
+];
 
 interface BannerAdsResponse {
   period: { startDate: string; endDate: string };
@@ -111,12 +116,9 @@ export default function BannerAdsPage() {
   const appliedRangeText = preset === 'custom' ? `${appliedStart} ~ ${appliedEnd}` : PRESET_LABEL[preset];
   const filterRangeText = data ? formatShortRange(data.period.startDate, data.period.endDate) : appliedRangeText;
 
-  const adColumns = [
-    { header: '배너명', render: (r: AdRow) => <span style={cellNameStyle}>{r.name}</span> },
-    { header: '노출수', align: 'right' as const, render: (r: AdRow) => <span style={cellValueStyle}>{fmt(r.view)}</span> },
-    { header: '클릭수', align: 'right' as const, render: (r: AdRow) => <span style={cellValueStyle}>{fmt(r.click)}</span> },
-    { header: 'CTR', align: 'right' as const, render: (r: AdRow) => <span style={cellValueStyle}>{r.ctr.toFixed(2)}%</span> },
-    { header: '게시 기간', align: 'right' as const, render: (r: AdRow) => <span style={{ fontSize: 12.5, color: colors.textMuted }}>{formatPeriod(r.period)}</span> },
+  const adExtraColumns = [
+    { header: 'CTR', render: (r: AdRow) => <span style={cellValueStyle}>{r.ctr.toFixed(2)}%</span> },
+    { header: '게시 기간', render: (r: AdRow) => <span style={{ fontSize: 12.5, color: colors.textMuted }}>{formatPeriod(r.period)}</span> },
   ];
 
   return (
@@ -160,7 +162,7 @@ export default function BannerAdsPage() {
         )}
 
         {data && (
-          <BannerAdsBody data={data} activeTab={activeTab} onSelectTab={setActiveTab} adColumns={adColumns} />
+          <BannerAdsBody data={data} activeTab={activeTab} onSelectTab={setActiveTab} adExtraColumns={adExtraColumns} />
         )}
       </div>
     </div>
@@ -171,14 +173,14 @@ function BannerAdsBody({
   data,
   activeTab,
   onSelectTab,
-  adColumns,
+  adExtraColumns,
 }: {
   data: BannerAdsResponse;
   activeTab: string;
   onSelectTab: (t: string) => void;
-  adColumns: { header: string; align?: 'left' | 'right'; render: (r: AdRow) => React.ReactNode }[];
+  adExtraColumns: { header: string; render: (r: AdRow) => React.ReactNode }[];
 }) {
-  const allEmpty = data.placementAgg.every((p) => p.view === 0 && p.click === 0) && data.popupAds.length === 0;
+  const allEmpty = data.placementAgg.every((p) => p.viewEvent === 0 && p.clickEvent === 0) && data.popupAds.length === 0;
 
   if (allEmpty) {
     return (
@@ -190,7 +192,7 @@ function BannerAdsBody({
 
   const activeRows = data.bannerAdsByPlacement[activeTab] ?? [];
   const isPopupTab = activeTab === '팝업';
-  const activeColumns = isPopupTab ? adColumns.map((c) => (c.header === '배너명' ? { ...c, header: '팝업명' } : c)) : adColumns;
+  const activeNameHeader = isPopupTab ? '팝업명' : '배너명';
 
   return (
     <>
@@ -198,33 +200,47 @@ function BannerAdsBody({
       <div style={{ ...card, marginBottom: 24 }}>
         <div style={sectionTitle}>구좌별 요약 집계</div>
         <div style={{ ...sectionSubtitle, marginBottom: 14 }}>총 노출수 내림차순 · 행을 클릭하면 하단 구좌가 전환돼요</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${colors.headerBorder}` }}>
-              <th style={thStyle('left')}>구좌명</th>
-              <th style={thStyle('right')}>총 노출수</th>
-              <th style={thStyle('right')}>총 클릭수</th>
-              <th style={thStyle('right')}>평균 CTR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.placementAgg.map((p) => {
-              const active = activeTab === p.name;
-              return (
-                <tr
-                  key={p.name}
-                  onClick={() => onSelectTab(p.name)}
-                  style={{ borderBottom: `1px solid ${colors.rowBorder}`, cursor: 'pointer', background: active ? '#F8FAFF' : '#fff' }}
-                >
-                  <td style={{ padding: '13px 8px', fontSize: 13.5, fontWeight: 600, color: active ? colors.primary : colors.textBody }}>{p.name}</td>
-                  <td style={{ padding: '13px 8px', textAlign: 'right', ...cellValueStyle }}>{fmt(p.view)}</td>
-                  <td style={{ padding: '13px 8px', textAlign: 'right', ...cellValueStyle }}>{fmt(p.click)}</td>
-                  <td style={{ padding: '13px 8px', textAlign: 'right', ...cellValueStyle }}>{p.ctr.toFixed(2)}%</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th rowSpan={2} style={{ textAlign: 'left', padding: '10px 8px', fontSize: 12.5, color: colors.textFaint, fontWeight: 600, verticalAlign: 'bottom', borderBottom: `1px solid ${colors.headerBorder}` }}>
+                  구좌명
+                </th>
+                <th colSpan={2} style={groupThStyle}>총 노출수</th>
+                <th colSpan={2} style={groupThStyle}>총 클릭수</th>
+                <th rowSpan={2} style={{ textAlign: 'right', padding: '10px 8px', fontSize: 12.5, color: colors.textFaint, fontWeight: 600, verticalAlign: 'bottom', borderBottom: `1px solid ${colors.headerBorder}` }}>
+                  평균 CTR
+                </th>
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${colors.headerBorder}` }}>
+                <th style={{ ...subThStyle, borderLeft: `1px solid ${colors.headerBorder}` }}>이벤트 수</th>
+                <th style={subThStyle}>활성 사용자 수</th>
+                <th style={{ ...subThStyle, borderLeft: `1px solid ${colors.headerBorder}` }}>이벤트 수</th>
+                <th style={subThStyle}>활성 사용자 수</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.placementAgg.map((p) => {
+                const active = activeTab === p.name;
+                return (
+                  <tr
+                    key={p.name}
+                    onClick={() => onSelectTab(p.name)}
+                    style={{ borderBottom: `1px solid ${colors.rowBorder}`, cursor: 'pointer', background: active ? '#F8FAFF' : '#fff' }}
+                  >
+                    <td style={{ padding: '13px 8px', fontSize: 13.5, fontWeight: 600, color: active ? colors.primary : colors.textBody }}>{p.name}</td>
+                    <td style={eventTdStyle}>{fmt(p.viewEvent)}</td>
+                    <td style={usersTdStyle}>{fmt(p.viewUsers)}</td>
+                    <td style={eventTdStyle}>{fmt(p.clickEvent)}</td>
+                    <td style={usersTdStyle}>{fmt(p.clickUsers)}</td>
+                    <td style={{ padding: '13px 8px', textAlign: 'right', ...cellValueStyle }}>{p.ctr.toFixed(2)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* 구좌 선택 탭 + 개별 배너 테이블 */}
@@ -253,31 +269,68 @@ function BannerAdsBody({
             );
           })}
         </div>
-        <PaginatedTable<AdRow>
+        <GroupedMetricTable<AdRow>
           title={isPopupTab ? '팝업 성과' : `${activeTab} 배너 성과`}
           subtitle="노출수 내림차순 정렬"
+          nameHeader={activeNameHeader}
+          nameValue={(r) => <span style={cellNameStyle}>{r.name}</span>}
+          metricGroups={AD_METRIC_GROUPS}
+          extraColumns={adExtraColumns}
           rows={activeRows}
-          columns={activeColumns}
           emptyMessage={isPopupTab ? '해당 기간에 집계된 팝업 이벤트가 없어요' : '이 구좌에는 해당 기간에 집계된 배너 이벤트가 없어요'}
           wrapInCard={false}
         />
       </div>
 
       {/* 팝업 성과 */}
-      <PaginatedTable<AdRow>
+      <GroupedMetricTable<AdRow>
         title="팝업 성과"
         subtitle="구좌 구분 없음 · 노출수 내림차순 정렬"
+        nameHeader="팝업명"
+        nameValue={(r) => <span style={cellNameStyle}>{r.name}</span>}
+        metricGroups={AD_METRIC_GROUPS}
+        extraColumns={adExtraColumns}
         rows={data.popupAds}
-        columns={adColumns.map((c) => (c.header === '배너명' ? { ...c, header: '팝업명' } : c))}
         emptyMessage="해당 기간에 집계된 팝업 이벤트가 없어요"
       />
     </>
   );
 }
 
-function thStyle(align: 'left' | 'right'): React.CSSProperties {
-  return { textAlign: align, padding: '10px 8px', fontSize: 12.5, color: colors.textFaint, fontWeight: 600 };
-}
+const groupThStyle: React.CSSProperties = {
+  textAlign: 'center',
+  padding: '8px',
+  fontSize: 12.5,
+  color: colors.textBody,
+  fontWeight: 700,
+  borderLeft: `1px solid ${colors.headerBorder}`,
+  borderBottom: `1px solid ${colors.rowBorder}`,
+};
+
+const subThStyle: React.CSSProperties = {
+  textAlign: 'right',
+  padding: '6px 8px 10px',
+  fontSize: 11.5,
+  color: colors.textFaint,
+  fontWeight: 500,
+  whiteSpace: 'nowrap',
+};
+
+const eventTdStyle: React.CSSProperties = {
+  padding: '13px 8px',
+  textAlign: 'right',
+  fontSize: 13.5,
+  color: colors.textDark,
+  fontWeight: 600,
+  borderLeft: `1px solid ${colors.rowBorder}`,
+};
+
+const usersTdStyle: React.CSSProperties = {
+  padding: '13px 8px',
+  textAlign: 'right',
+  fontSize: 13,
+  color: colors.textFaint,
+};
 
 const retryBtnStyle: React.CSSProperties = {
   border: 'none',

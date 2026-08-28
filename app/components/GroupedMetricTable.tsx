@@ -1,25 +1,21 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
-import { PartnerStatusRow } from '@/lib/queries';
-import { colors, fmt, navBtnStyle, pageBtnStyle, sectionSubtitle, sectionTitle } from './shared';
+import { Fragment, ReactNode, useEffect, useState } from 'react';
+import { card, colors, fmt, navBtnStyle, pageBtnStyle, sectionSubtitle, sectionTitle } from './shared';
 
 const PER_PAGE = 10;
 const PAGE_WINDOW = 5;
 
-const METRIC_GROUPS: { key: 'view' | 'call' | 'kakao' | 'use'; label: string }[] = [
-  { key: 'view', label: '조회수' },
-  { key: 'call', label: '전화 클릭' },
-  { key: 'kakao', label: '카카오 클릭' },
-  { key: 'use', label: '이용하기 클릭' },
-];
-
-function eventValue(row: PartnerStatusRow, key: (typeof METRIC_GROUPS)[number]['key']): number {
-  return { view: row.viewEvent, call: row.callEvent, kakao: row.kakaoEvent, use: row.useEvent }[key];
+export interface MetricGroup<T> {
+  key: string;
+  label: string;
+  eventValue: (row: T) => number;
+  usersValue: (row: T) => number;
 }
 
-function usersValue(row: PartnerStatusRow, key: (typeof METRIC_GROUPS)[number]['key']): number {
-  return { view: row.viewUsers, call: row.callUsers, kakao: row.kakaoUsers, use: row.useUsers }[key];
+export interface ExtraColumn<T> {
+  header: string;
+  render: (row: T) => ReactNode;
 }
 
 const groupThStyle: React.CSSProperties = {
@@ -41,6 +37,16 @@ const subThStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
+const extraThStyle: React.CSSProperties = {
+  textAlign: 'right',
+  padding: '10px 8px',
+  fontSize: 12.5,
+  color: colors.textFaint,
+  fontWeight: 600,
+  verticalAlign: 'bottom',
+  borderBottom: `1px solid ${colors.headerBorder}`,
+};
+
 const eventTdStyle: React.CSSProperties = {
   padding: '13px 8px',
   textAlign: 'right',
@@ -57,7 +63,35 @@ const usersTdStyle: React.CSSProperties = {
   color: colors.textFaint,
 };
 
-export function PartnerStatusTable({ rows, emptyMessage }: { rows: PartnerStatusRow[]; emptyMessage: string }) {
+const extraTdStyle: React.CSSProperties = {
+  padding: '13px 8px',
+  textAlign: 'right',
+  fontSize: 13.5,
+  color: colors.textDark,
+  fontWeight: 600,
+};
+
+export function GroupedMetricTable<T>({
+  title,
+  subtitle,
+  nameHeader,
+  nameValue,
+  metricGroups,
+  extraColumns = [],
+  rows,
+  emptyMessage,
+  wrapInCard = true,
+}: {
+  title?: string;
+  subtitle?: string;
+  nameHeader: string;
+  nameValue: (row: T) => ReactNode;
+  metricGroups: MetricGroup<T>[];
+  extraColumns?: ExtraColumn<T>[];
+  rows: T[];
+  emptyMessage: string;
+  wrapInCard?: boolean;
+}) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
 
@@ -73,18 +107,20 @@ export function PartnerStatusTable({ rows, emptyMessage }: { rows: PartnerStatus
   const pageNumbers = Array.from({ length: windowEnd - windowStart + 1 }, (_, i) => windowStart + i);
 
   return (
-    <div>
-      <div style={{ marginBottom: 14 }}>
-        <div style={sectionTitle}>제휴사 입점 성과</div>
-        <div style={sectionSubtitle}>조회수(이벤트 수) 내림차순 정렬 · 지표별 이벤트 수 / 활성 사용자 수 구분</div>
-      </div>
+    <div style={wrapInCard ? { ...card, minWidth: 0 } : { minWidth: 0 }}>
+      {(title || subtitle) && (
+        <div style={{ marginBottom: 14 }}>
+          {title && <div style={sectionTitle}>{title}</div>}
+          {subtitle && <div style={sectionSubtitle}>{subtitle}</div>}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 13.5, color: colors.textFaint }}>{emptyMessage}</div>
       ) : (
         <>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: 1020, borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', minWidth: 220 + metricGroups.length * 180 + extraColumns.length * 120, borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <th
@@ -100,16 +136,21 @@ export function PartnerStatusTable({ rows, emptyMessage }: { rows: PartnerStatus
                       borderBottom: `1px solid ${colors.headerBorder}`,
                     }}
                   >
-                    업체명
+                    {nameHeader}
                   </th>
-                  {METRIC_GROUPS.map((g) => (
+                  {metricGroups.map((g) => (
                     <th key={g.key} colSpan={2} style={groupThStyle}>
                       {g.label}
                     </th>
                   ))}
+                  {extraColumns.map((c) => (
+                    <th key={c.header} rowSpan={2} style={extraThStyle}>
+                      {c.header}
+                    </th>
+                  ))}
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${colors.headerBorder}` }}>
-                  {METRIC_GROUPS.map((g) => (
+                  {metricGroups.map((g) => (
                     <Fragment key={g.key}>
                       <th style={{ ...subThStyle, borderLeft: `1px solid ${colors.headerBorder}` }}>이벤트 수</th>
                       <th style={subThStyle}>활성 사용자 수</th>
@@ -120,12 +161,17 @@ export function PartnerStatusTable({ rows, emptyMessage }: { rows: PartnerStatus
               <tbody>
                 {slice.map((row, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid ${colors.rowBorder}` }}>
-                    <td style={{ padding: '13px 8px', fontSize: 13.5, color: colors.textBody, fontWeight: 500 }}>{row.name}</td>
-                    {METRIC_GROUPS.map((g) => (
+                    <td style={{ padding: '13px 8px', fontSize: 13.5, color: colors.textBody, fontWeight: 500 }}>{nameValue(row)}</td>
+                    {metricGroups.map((g) => (
                       <Fragment key={g.key}>
-                        <td style={eventTdStyle}>{fmt(eventValue(row, g.key))}</td>
-                        <td style={usersTdStyle}>{fmt(usersValue(row, g.key))}</td>
+                        <td style={eventTdStyle}>{fmt(g.eventValue(row))}</td>
+                        <td style={usersTdStyle}>{fmt(g.usersValue(row))}</td>
                       </Fragment>
+                    ))}
+                    {extraColumns.map((c) => (
+                      <td key={c.header} style={extraTdStyle}>
+                        {c.render(row)}
+                      </td>
                     ))}
                   </tr>
                 ))}
