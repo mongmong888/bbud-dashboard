@@ -10,7 +10,14 @@ export async function loadDauIssues(): Promise<DauIssues> {
     const result = await get(ISSUES_BLOB_PATH, { access: 'private', useCache: false });
     if (!result || !result.stream) return {};
     const text = await new Response(result.stream).text();
-    return JSON.parse(text) as DauIssues;
+    const raw = JSON.parse(text) as Record<string, string | string[]>;
+    // 이전 버전은 날짜당 문자열 메모 하나만 저장했다. 그 형식이 남아있어도 깨지지 않도록
+    // 읽을 때 항상 배열로 정규화한다(다시 저장되는 순간부터는 새 형식으로 굳어진다).
+    const normalized: DauIssues = {};
+    for (const [date, value] of Object.entries(raw)) {
+      normalized[date] = Array.isArray(value) ? value : [value];
+    }
+    return normalized;
   } catch {
     return {};
   }
