@@ -1,9 +1,9 @@
-// DAU 팝업의 "이 날의 이슈" 메모: 날짜(YYYYMMDD, GA4 date 형식) -> 메모 텍스트.
+// DAU 팝업의 "이 날의 이슈" 메모: 날짜(YYYY-MM-DD) -> 메모 텍스트 목록(하루에 여러 건 가능).
 import { put, get } from '@vercel/blob';
 
 const ISSUES_BLOB_PATH = 'dau-issues.json';
 
-export type DauIssues = Record<string, string>;
+export type DauIssues = Record<string, string[]>;
 
 export async function loadDauIssues(): Promise<DauIssues> {
   try {
@@ -16,18 +16,31 @@ export async function loadDauIssues(): Promise<DauIssues> {
   }
 }
 
-export async function saveDauIssue(date: string, note: string): Promise<DauIssues> {
-  const issues = await loadDauIssues();
-  if (note.trim()) {
-    issues[date] = note.trim();
-  } else {
-    delete issues[date];
-  }
+async function persist(issues: DauIssues): Promise<void> {
   await put(ISSUES_BLOB_PATH, JSON.stringify(issues), {
     access: 'private',
     addRandomSuffix: false,
     contentType: 'application/json',
     allowOverwrite: true,
   });
+}
+
+export async function addDauIssue(date: string, note: string): Promise<DauIssues> {
+  const trimmed = note.trim();
+  if (!trimmed) return loadDauIssues();
+  const issues = await loadDauIssues();
+  const list = issues[date] ?? [];
+  issues[date] = [...list, trimmed];
+  await persist(issues);
+  return issues;
+}
+
+export async function removeDauIssue(date: string, index: number): Promise<DauIssues> {
+  const issues = await loadDauIssues();
+  const list = issues[date] ?? [];
+  const next = list.filter((_, i) => i !== index);
+  if (next.length > 0) issues[date] = next;
+  else delete issues[date];
+  await persist(issues);
   return issues;
 }

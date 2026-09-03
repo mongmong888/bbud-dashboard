@@ -15,25 +15,45 @@ const BOTTOM = 300;
 const INNER_W = RIGHT - LEFT;
 const INNER_H = BOTTOM - TOP;
 
+const CATEGORY_STYLE: Record<string, { bg: string; color: string }> = {
+  지원사업: { bg: '#EAF1FF', color: '#3E7BFA' },
+  창업정보: { bg: '#E9F9EE', color: '#12B76A' },
+  이벤트: { bg: '#FEF3E8', color: '#B54708' },
+};
+
+interface DayLogsResponse {
+  date: string;
+  pushLogs: { time: string; content: string }[];
+  contentLogs: { category: string; title: string }[];
+}
+
 export function DauModal({
   point,
-  savedNote,
+  savedIssues,
   maxUsers,
   onClose,
-  onSave,
+  onAddIssue,
+  onRemoveIssue,
 }: {
   point: TrendPoint;
-  savedNote: string;
+  savedIssues: string[];
   maxUsers: number;
   onClose: () => void;
-  onSave: (date: string, note: string) => Promise<void>;
+  onAddIssue: (date: string, note: string) => Promise<void>;
+  onRemoveIssue: (date: string, index: number) => Promise<void>;
 }) {
   const [hours, setHours] = useState<HourlyPoint[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState(savedNote);
+
+  const [dayLogs, setDayLogs] = useState<DayLogsResponse | null>(null);
+  const [dayLogsLoading, setDayLogsLoading] = useState(true);
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [removingIndex, setRemovingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,8 +78,31 @@ export function DauModal({
   }, [point.date]);
 
   useEffect(() => {
-    setDraft(savedNote);
-  }, [savedNote, point.date]);
+    let cancelled = false;
+    setDayLogsLoading(true);
+    setDayLogs(null);
+    fetch(`/api/dashboard/day-logs?date=${toIsoDate(point.date)}`)
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? '조회 실패');
+        if (!cancelled) setDayLogs(json);
+      })
+      .catch(() => {
+        if (!cancelled) setDayLogs({ date: toIsoDate(point.date), pushLogs: [], contentLogs: [] });
+      })
+      .finally(() => {
+        if (!cancelled) setDayLogsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [point.date]);
+
+  useEffect(() => {
+    setFormOpen(false);
+    setDraft('');
+    setSaveError(null);
+  }, [point.date]);
 
   const geometry = useMemo(() => {
     if (!hours) return null;
@@ -76,15 +119,32 @@ export function DauModal({
     return { bars, yTicks, peakHour: `${String(peak.hour).padStart(2, '0')}시` };
   }, [hours, maxUsers]);
 
-  async function handleSave() {
+  async function handleSaveIssue() {
+    if (!draft.trim()) {
+      setSaveError('이슈 내용을 입력해 주세요.');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      await onSave(point.date, draft);
+      await onAddIssue(point.date, draft);
+      setDraft('');
+      setFormOpen(false);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : '저장에 실패했어요.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRemoveIssue(index: number) {
+    setRemovingIndex(index);
+    try {
+      await onRemoveIssue(point.date, index);
+    } catch {
+      // 실패해도 목록은 그대로 유지되므로 별도 처리 없이 조용히 둔다.
+    } finally {
+      setRemovingIndex(null);
     }
   }
 
@@ -182,66 +242,159 @@ export function DauModal({
         <div style={{ padding: '8px 26px 26px' }}>
           <div style={{ borderTop: `1px solid ${colors.headerBorder}`, paddingTop: 18 }}>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: colors.textDark, marginBottom: 4 }}>이 날의 이슈</div>
-            <div style={{ fontSize: 12.5, color: colors.textFaint, marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, color: colors.textFaint, marginBottom: 14 }}>
               트래픽 변동 원인이나 운영 이벤트를 기록해두면 다음 분석에 참고할 수 있어요
             </div>
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="예: 오후 2시 푸시 발송, 앱 배포 오류로 20시대 접속 지연"
-              style={{
-                width: '100%',
-                minHeight: 90,
-                padding: '12px 14px',
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10,
-                fontSize: 13,
-                color: colors.textBody,
-                fontFamily: 'inherit',
-                lineHeight: 1.6,
-                resize: 'vertical',
-              }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-              {saveError ? (
-                <div style={{ fontSize: 12, color: '#D92D20', fontWeight: 600 }}>{saveError}</div>
-              ) : (
-                savedNote && <div style={{ fontSize: 12, color: colors.positive, fontWeight: 600 }}>저장된 메모가 있어요</div>
-              )}
-              <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-                <button
-                  onClick={onClose}
-                  style={{
-                    border: `1px solid ${colors.border}`,
-                    background: '#fff',
-                    color: colors.textBody,
-                    padding: '9px 18px',
-                    borderRadius: 9,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  닫기
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  style={{
-                    border: 'none',
-                    background: colors.primary,
-                    color: '#fff',
-                    padding: '9px 20px',
-                    borderRadius: 9,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: saving ? 'default' : 'pointer',
-                    opacity: saving ? 0.6 : 1,
-                  }}
-                >
-                  {saving ? '저장 중...' : '저장'}
-                </button>
+
+            <div style={{ border: `1px solid ${colors.headerBorder}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke={colors.primary} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10.3 21a2 2 0 0 0 3.4 0" stroke={colors.primary} strokeWidth={1.8} strokeLinecap="round" />
+                </svg>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: colors.textBody }}>이 날 발송된 푸시 알림</div>
               </div>
+              {dayLogsLoading && <div style={{ fontSize: 12.5, color: colors.textFaint }}>불러오는 중...</div>}
+              {!dayLogsLoading && dayLogs && dayLogs.pushLogs.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {dayLogs.pushLogs.map((p, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: colors.textMuted, lineHeight: 1.5 }}>
+                      <span style={{ background: colors.primaryBg, color: colors.primary, fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 6, flexShrink: 0 }}>
+                        {p.time}
+                      </span>
+                      <span>{p.content}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!dayLogsLoading && dayLogs && dayLogs.pushLogs.length === 0 && (
+                <div style={{ fontSize: 12.5, color: colors.textFaint }}>이 날 발송된 푸시 알림이 없어요</div>
+              )}
+            </div>
+
+            <div style={{ border: `1px solid ${colors.headerBorder}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 4h11l3 3v13H5V4Z" stroke={colors.positive} strokeWidth={1.8} strokeLinejoin="round" />
+                  <path d="M8.5 10h7M8.5 14h4.5" stroke={colors.positive} strokeWidth={1.8} strokeLinecap="round" />
+                </svg>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: colors.textBody }}>이 날 발행된 콘텐츠</div>
+              </div>
+              {dayLogsLoading && <div style={{ fontSize: 12.5, color: colors.textFaint }}>불러오는 중...</div>}
+              {!dayLogsLoading && dayLogs && dayLogs.contentLogs.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {dayLogs.contentLogs.map((c, i) => {
+                    const style = CATEGORY_STYLE[c.category] ?? { bg: colors.bg, color: colors.textMuted };
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: colors.textMuted, lineHeight: 1.5 }}>
+                        <span style={{ background: style.bg, color: style.color, fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                          {c.category}
+                        </span>
+                        <span>{c.title}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {!dayLogsLoading && dayLogs && dayLogs.contentLogs.length === 0 && (
+                <div style={{ fontSize: 12.5, color: colors.textFaint }}>이 날 발행된 콘텐츠가 없어요</div>
+              )}
+            </div>
+
+            {savedIssues.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                {savedIssues.map((text, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', background: '#FAFBFC', borderRadius: 10 }}>
+                    <span style={{ flex: 1, fontSize: 13, color: colors.textBody, lineHeight: 1.55 }}>{text}</span>
+                    <button
+                      onClick={() => handleRemoveIssue(i)}
+                      disabled={removingIndex === i}
+                      style={{ border: 'none', background: 'transparent', color: colors.textFaint, cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 2, flexShrink: 0 }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!formOpen && (
+              <button
+                onClick={() => setFormOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  border: '1px dashed #C7D3FE',
+                  background: '#fff',
+                  color: colors.primary,
+                  padding: '10px 18px',
+                  borderRadius: 9,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                + 이슈 추가
+              </button>
+            )}
+
+            {formOpen && (
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="예: 오후 2시 푸시 발송, 앱 배포 오류로 20시대 접속 지연"
+                autoFocus
+                style={{
+                  width: '100%',
+                  minHeight: 80,
+                  padding: '12px 14px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 10,
+                  fontSize: 13,
+                  color: colors.textBody,
+                  fontFamily: 'inherit',
+                  lineHeight: 1.6,
+                  resize: 'vertical',
+                }}
+              />
+            )}
+
+            {saveError && <div style={{ fontSize: 12, color: '#D92D20', fontWeight: 600, marginTop: 10 }}>{saveError}</div>}
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.rowBorder}` }}>
+              <button
+                onClick={onClose}
+                style={{
+                  border: `1px solid ${colors.border}`,
+                  background: '#fff',
+                  color: colors.textBody,
+                  padding: '9px 18px',
+                  borderRadius: 9,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                닫기
+              </button>
+              <button
+                onClick={handleSaveIssue}
+                disabled={!formOpen || saving}
+                style={{
+                  border: 'none',
+                  background: colors.primary,
+                  color: '#fff',
+                  padding: '9px 20px',
+                  borderRadius: 9,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: !formOpen || saving ? 'default' : 'pointer',
+                  opacity: !formOpen || saving ? 0.5 : 1,
+                }}
+              >
+                {saving ? '저장 중...' : '저장'}
+              </button>
             </div>
           </div>
         </div>

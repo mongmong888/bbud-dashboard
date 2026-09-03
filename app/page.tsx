@@ -45,7 +45,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [issues, setIssues] = useState<Record<string, string>>({});
+  const [issues, setIssues] = useState<Record<string, string[]>>({});
   const [modalPoint, setModalPoint] = useState<TrendPoint | null>(null);
 
   useEffect(() => {
@@ -55,16 +55,26 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  async function handleSaveIssue(date: string, note: string) {
+  async function handleAddIssue(date: string, note: string) {
     const res = await fetch('/api/dau-issues', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, note }),
+      body: JSON.stringify({ date, action: 'add', note }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? '저장에 실패했어요.');
     setIssues(json.issues ?? {});
-    setModalPoint(null);
+  }
+
+  async function handleRemoveIssue(date: string, index: number) {
+    const res = await fetch('/api/dau-issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, action: 'remove', index }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? '삭제에 실패했어요.');
+    setIssues(json.issues ?? {});
   }
 
   const fetchData = useCallback(async () => {
@@ -273,10 +283,11 @@ export default function DashboardPage() {
       {modalPoint && (
         <DauModal
           point={modalPoint}
-          savedNote={issues[modalPoint.date] ?? ''}
+          savedIssues={issues[modalPoint.date] ?? []}
           maxUsers={data.hourlyMax}
           onClose={() => setModalPoint(null)}
-          onSave={handleSaveIssue}
+          onAddIssue={handleAddIssue}
+          onRemoveIssue={handleRemoveIssue}
         />
       )}
     </Shell>

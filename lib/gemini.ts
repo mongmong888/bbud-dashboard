@@ -45,13 +45,19 @@ function formatMetric(label: string, value: number, unit: string, delta: number 
 export async function analyzeDauTrend(
   trend: TrendPoint[],
   rangeLabel: string,
-  issues: Record<string, string>,
+  issues: Record<string, string[]>,
   summary: SummaryData
 ): Promise<AiAnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY 환경변수가 설정되지 않았습니다.');
 
-  const seriesText = trend.map((d) => `${d.label}: ${d.total}명${issues[d.date] ? ` (운영 메모: ${issues[d.date]})` : ''}`).join('\n');
+  const seriesText = trend
+    .map((d) => {
+      const notes = issues[d.date];
+      const noteText = notes && notes.length > 0 ? ` (운영 메모: ${notes.join(' / ')})` : '';
+      return `${d.label}: ${d.total}명${noteText}`;
+    })
+    .join('\n');
 
   const summaryText = [
     formatMetric('활성 사용자수', summary.activeUsers.value, '명', summary.activeUsers.delta),
