@@ -681,6 +681,7 @@ export interface ContentScrollFunnel {
 }
 
 export interface ContentItem {
+  pageTitle: string; // GA4 원본 pageTitle. 발행일 수기 수정 시 식별자로 쓰인다.
   category: string;
   title: string;
   publishDate: string; // YYYY-MM-DD. GA4상 해당 pageTitle이 처음 조회된 날짜
@@ -750,6 +751,7 @@ export async function getContentItems(period: Period): Promise<ContentItem[]> {
     const rawDate = minDateByTitle.get(row.pageTitle);
     if (!rawDate) continue;
     items.push({
+      pageTitle: row.pageTitle,
       category: category.label,
       title: row.pageTitle.slice(category.prefix.length).trim(),
       publishDate: `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`,

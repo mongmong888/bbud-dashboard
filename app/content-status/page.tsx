@@ -5,6 +5,7 @@ import { Preset } from '@/lib/ga4';
 import { ContentItem } from '@/lib/queries';
 import { CONTENT_CATEGORIES } from '@/lib/contentCategories';
 import { FilterBar } from '../components/TopBar';
+import { ContentDateEditModal } from '../components/ContentDateEditModal';
 import { card, colors, fmt, formatShortRange, navBtnStyle, pageBtnStyle, sectionSubtitle, sectionTitle } from '../components/shared';
 
 interface DateGroup {
@@ -16,7 +17,6 @@ interface ContentStatusResponse {
   period: { startDate: string; endDate: string };
   maxSelectableDate: string;
   dates: DateGroup[];
-  unknown: ContentItem[];
 }
 
 const PRESET_LABEL: Record<Preset, string> = {
@@ -98,7 +98,7 @@ function ScrollFunnel({ funnel }: { funnel: ContentItem['scrollFunnel'] }) {
   );
 }
 
-function ContentItemTable({ items }: { items: ContentItem[] }) {
+function ContentItemTable({ items, onEditItem }: { items: ContentItem[]; onEditItem: (item: ContentItem) => void }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse' }}>
@@ -139,7 +139,11 @@ function ContentItemTable({ items }: { items: ContentItem[] }) {
               <td style={{ padding: '13px 8px' }}>
                 <CategoryChip label={it.category} />
               </td>
-              <td style={{ padding: '13px 8px', fontSize: 13, color: colors.textBody, fontWeight: 500, lineHeight: 1.45 }} title={it.title}>
+              <td
+                onClick={() => onEditItem(it)}
+                style={{ padding: '13px 8px', fontSize: 13, color: colors.primary, fontWeight: 500, lineHeight: 1.45, cursor: 'pointer' }}
+                title={`${it.title} — 클릭해서 발행일 수정`}
+              >
                 {it.title}
               </td>
               <td style={eventTdStyle}>{fmt(it.viewEvent)}</td>
@@ -176,6 +180,7 @@ export default function ContentStatusPage() {
   const [categoryTab, setCategoryTab] = useState<string>('전체');
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -245,6 +250,18 @@ export default function ContentStatusPage() {
     setCustomError('');
   }
 
+  async function handleSaveDate(pageTitle: string, date: string) {
+    const res = await fetch('/api/content-status/override', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageTitle, date }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? '저장에 실패했어요.');
+    setEditingItem(null);
+    await fetchData();
+  }
+
   const appliedRangeText = preset === 'custom' ? `${appliedStart} ~ ${appliedEnd}` : PRESET_LABEL[preset];
   const filterRangeText = data ? `${formatShortRange(data.period.startDate, data.period.endDate)} 발행` : `${appliedRangeText} 발행`;
 
@@ -288,12 +305,6 @@ export default function ContentStatusPage() {
     setExpanded(next);
   }
 
-  const filteredUnknown = useMemo(() => {
-    if (!data) return [];
-    if (categoryTab === '전체') return data.unknown;
-    return data.unknown.filter((it) => it.category === categoryTab);
-  }, [data, categoryTab]);
-
   return (
     <div style={{ padding: '32px 40px 80px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -319,20 +330,6 @@ export default function ContentStatusPage() {
           customButtonLabel={preset === 'custom' ? appliedRangeText : '직접설정'}
         />
 
-        <div
-          style={{
-            background: '#F5F8FF',
-            border: '1px solid #DCE7FF',
-            borderRadius: 10,
-            padding: '10px 14px',
-            marginBottom: 20,
-            fontSize: 12.5,
-            color: colors.primary,
-          }}
-        >
-          이 화면의 지표는 콘텐츠의 발행일을 기준으로 집계돼요. 트래픽 발생일이 아닙니다.
-        </div>
-
         {loading && !data && (
           <div style={{ ...card, height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ fontSize: 13.5, color: colors.textFaint }}>불러오는 중...</div>
@@ -348,13 +345,13 @@ export default function ContentStatusPage() {
           </div>
         )}
 
-        {data && allItems.length === 0 && data.unknown.length === 0 && (
+        {data && allItems.length === 0 && (
           <div style={{ ...card, padding: '80px 24px', textAlign: 'center', fontSize: 13.5, color: colors.textFaint }}>
             선택한 기간에 발행된 콘텐츠가 없어요
           </div>
         )}
 
-        {data && (allItems.length > 0 || data.unknown.length > 0) && (
+        {data && allItems.length > 0 && (
           <>
             <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
               {['전체', ...CONTENT_CATEGORIES.map((c) => c.label)].map((label) => {
@@ -473,7 +470,7 @@ export default function ContentStatusPage() {
 
                     {hasRows && isExpanded && (
                       <div style={{ borderTop: `1px solid ${colors.rowBorder}`, padding: '6px 18px 16px' }}>
-                        <ContentItemTable items={d.items} />
+                        <ContentItemTable items={d.items} onEditItem={setEditingItem} />
                       </div>
                     )}
                   </div>
@@ -504,22 +501,16 @@ export default function ContentStatusPage() {
                 </button>
               </div>
             )}
-
-            {filteredUnknown.length > 0 && (
-              <div style={{ ...card, marginTop: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
-                  <div style={sectionTitle}>발행일 미상</div>
-                  <span style={{ background: '#FEF3E8', color: '#B54708', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20 }}>
-                    발행일 추정 불가
-                  </span>
-                </div>
-                <div style={{ ...sectionSubtitle, marginBottom: 14 }}>
-                  GA4 조회 범위 밖에서 이미 트래픽이 있었을 가능성이 있어 최초 발행일을 확정할 수 없어요
-                </div>
-                <ContentItemTable items={filteredUnknown} />
-              </div>
-            )}
           </>
+        )}
+
+        {editingItem && (
+          <ContentDateEditModal
+            item={editingItem}
+            maxSelectableDate={maxSelectableDate}
+            onClose={() => setEditingItem(null)}
+            onSave={handleSaveDate}
+          />
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolvePeriod, isDateRangeError, getMaxSelectableDate, addDays, Preset } from '@/lib/ga4';
 import { getContentItems, ContentItem } from '@/lib/queries';
+import { loadContentPublishOverrides } from '@/lib/contentPublishOverrides';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const items = await getContentItems(period);
+    const [rawItems, overrides] = await Promise.all([getContentItems(period), loadContentPublishOverrides()]);
+
+    // 수기로 지정한 발행일이 있으면 GA4 추정치보다 우선한다.
+    const items = rawItems.map((it) => {
+      const override = overrides[it.pageTitle];
+      if (!override) return it;
+      return { ...it, publishDate: override, isUnknownDate: false };
+    });
 
     const inRange = items.filter(
       (it) => !it.isUnknownDate && it.publishDate >= period.startDate && it.publishDate <= period.endDate
     );
-    const unknown = items.filter((it) => it.isUnknownDate);
 
     const byDate = new Map<string, ContentItem[]>();
     for (const it of inRange) {
@@ -42,7 +49,6 @@ export async function GET(req: NextRequest) {
       period,
       maxSelectableDate: getMaxSelectableDate(),
       dates,
-      unknown,
     });
   } catch (err) {
     console.error('콘텐츠 현황 데이터 조회 실패', err);
