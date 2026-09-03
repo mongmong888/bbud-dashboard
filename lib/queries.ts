@@ -3,15 +3,19 @@ import {
   eventNameFilter,
   pathContainsFilter,
   containsFilter,
+  beginsWithFilter,
   andFilter,
   orFilter,
+  addDays,
   Period,
   DimensionFilter,
 } from './ga4';
 import { PLACEMENT_KEYWORDS, UNCLASSIFIED_PLACEMENT, classifyPlacement } from './placements';
 import { fetchPushSentHistory } from './notion';
+import { CONTENT_CATEGORIES } from './contentCategories';
 
 export { PLACEMENT_KEYWORDS, UNCLASSIFIED_PLACEMENT, classifyPlacement } from './placements';
+export { CONTENT_CATEGORIES } from './contentCategories';
 
 function toNum(v: string | undefined): number {
   return v ? Number(v) : 0;
@@ -661,4 +665,101 @@ export async function getPushSentList(period: Period): Promise<PushSentRow[]> {
   );
 
   return results.sort((a, b) => (a.sentAt < b.sentAt ? 1 : -1));
+}
+
+// ---------- 콘텐츠 현황 (발행일 기준 콘텐츠 성과) ----------
+
+// 발행일 판별을 위해 거슬러 올라가는 기간. 이보다 이전에 발행된 콘텐츠는 "발행일 미상"으로 분류한다
+// (그 이전 이력이 잘려서 GA4상 최초 노출일이 실제 발행일과 다를 수 있기 때문).
+const CONTENT_LOOKBACK_DAYS = 90;
+
+export interface ContentScrollFunnel {
+  p25: number;
+  p50: number;
+  p75: number;
+  p100: number;
+}
+
+export interface ContentItem {
+  category: string;
+  title: string;
+  publishDate: string; // YYYY-MM-DD. GA4상 해당 pageTitle이 처음 조회된 날짜
+  isUnknownDate: boolean; // true면 publishDate가 lookback 시작일과 같아, 실제보다 늦게 잡혔을 수 있음
+  viewEvent: number;
+  viewUsers: number;
+  avgSessionSeconds: number;
+  scrollFunnel: ContentScrollFunnel;
+}
+
+export async function getContentItems(period: Period): Promise<ContentItem[]> {
+  const lookbackStart = addDays(period.startDate, -CONTENT_LOOKBACK_DAYS);
+  const lookbackEnd = period.endDate;
+  const categoryFilter = orFilter(...CONTENT_CATEGORIES.map((c) => beginsWithFilter('pageTitle', c.prefix)));
+
+  const [dateRows, metricRows, scrollRows] = await Promise.all([
+    runReport({
+      property: 'web',
+      dimensions: [{ name: 'pageTitle' }, { name: 'date' }],
+      metrics: [{ name: 'screenPageViews' }],
+      startDate: lookbackStart,
+      endDate: lookbackEnd,
+      dimensionFilter: categoryFilter,
+    }),
+    runReport({
+      property: 'web',
+      dimensions: [{ name: 'pageTitle' }],
+      metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }, { name: 'averageSessionDuration' }],
+      startDate: lookbackStart,
+      endDate: lookbackEnd,
+      dimensionFilter: categoryFilter,
+    }),
+    runReport({
+      property: 'web',
+      dimensions: [{ name: 'pageTitle' }, { name: 'customEvent:scroll_depth' }],
+      metrics: [{ name: 'eventCount' }],
+      startDate: lookbackStart,
+      endDate: lookbackEnd,
+      dimensionFilter: andFilter(eventNameFilter('custom_scroll_depth'), categoryFilter),
+    }),
+  ]);
+
+  const minDateByTitle = new Map<string, string>();
+  for (const row of dateRows) {
+    const existing = minDateByTitle.get(row.pageTitle);
+    if (!existing || row.date < existing) minDateByTitle.set(row.pageTitle, row.date);
+  }
+
+  const scrollByTitle = new Map<string, ContentScrollFunnel>();
+  for (const row of scrollRows) {
+    const entry = scrollByTitle.get(row.pageTitle) ?? { p25: 0, p50: 0, p75: 0, p100: 0 };
+    const count = toNum(row.eventCount);
+    const pct = row['customEvent:scroll_depth'];
+    if (pct === '25') entry.p25 = count;
+    else if (pct === '50') entry.p50 = count;
+    else if (pct === '75') entry.p75 = count;
+    else if (pct === '100') entry.p100 = count;
+    scrollByTitle.set(row.pageTitle, entry);
+  }
+
+  const lookbackStartYyyymmdd = lookbackStart.replace(/-/g, '');
+
+  const items: ContentItem[] = [];
+  for (const row of metricRows) {
+    const category = CONTENT_CATEGORIES.find((c) => row.pageTitle.startsWith(c.prefix));
+    if (!category) continue;
+    const rawDate = minDateByTitle.get(row.pageTitle);
+    if (!rawDate) continue;
+    items.push({
+      category: category.label,
+      title: row.pageTitle.slice(category.prefix.length).trim(),
+      publishDate: `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`,
+      isUnknownDate: rawDate === lookbackStartYyyymmdd,
+      viewEvent: toNum(row.screenPageViews),
+      viewUsers: toNum(row.activeUsers),
+      avgSessionSeconds: toNum(row.averageSessionDuration),
+      scrollFunnel: scrollByTitle.get(row.pageTitle) ?? { p25: 0, p50: 0, p75: 0, p100: 0 },
+    });
+  }
+
+  return items;
 }

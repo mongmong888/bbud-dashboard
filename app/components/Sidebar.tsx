@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '/', label: '대시보드' },
   { href: '/members', label: '회원 현황' },
   { href: '/partners', label: '제휴사 현황' },
+  { href: '/content-status', label: '콘텐츠 현황' },
   { href: '/banner-ads', label: '배너 광고' },
   { href: '/push-notifications', label: '푸시 알림' },
 ];

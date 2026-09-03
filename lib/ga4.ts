@@ -92,6 +92,10 @@ export function containsFilter(fieldName: string, value: string): DimensionFilte
   return { filter: { fieldName, stringFilter: { matchType: 'CONTAINS', value } } };
 }
 
+export function beginsWithFilter(fieldName: string, value: string): DimensionFilter {
+  return { filter: { fieldName, stringFilter: { matchType: 'BEGINS_WITH', value } } };
+}
+
 export function andFilter(...filters: DimensionFilter[]): DimensionFilter {
   return { andGroup: { expressions: filters } };
 }
@@ -113,7 +117,7 @@ function fmtDate(d: Date): string {
   }).format(d);
 }
 
-function addDays(dateStr: string, delta: number): string {
+export function addDays(dateStr: string, delta: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);
   return d.toISOString().slice(0, 10);
