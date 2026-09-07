@@ -96,6 +96,10 @@ export function beginsWithFilter(fieldName: string, value: string): DimensionFil
   return { filter: { fieldName, stringFilter: { matchType: 'BEGINS_WITH', value } } };
 }
 
+export function inListFilter(fieldName: string, values: string[]): DimensionFilter {
+  return { filter: { fieldName, inListFilter: { values } } };
+}
+
 export function andFilter(...filters: DimensionFilter[]): DimensionFilter {
   return { andGroup: { expressions: filters } };
 }

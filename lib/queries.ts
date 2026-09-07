@@ -4,6 +4,7 @@ import {
   pathContainsFilter,
   containsFilter,
   beginsWithFilter,
+  inListFilter,
   andFilter,
   orFilter,
   addDays,
@@ -669,9 +670,14 @@ export async function getPushSentList(period: Period): Promise<PushSentRow[]> {
 
 // ---------- 콘텐츠 현황 (발행일 기준 콘텐츠 성과) ----------
 
-// 발행일 판별을 위해 거슬러 올라가는 기간. 이보다 이전에 발행된 콘텐츠는 "발행일 미상"으로 분류한다
-// (그 이전 이력이 잘려서 GA4상 최초 노출일이 실제 발행일과 다를 수 있기 때문).
+// 1차: 최근 활동을 확인하는 기본 조회 창(일 단위). 대부분의 콘텐츠는 이 범위 안에서 정확한
+// 최초 노출일까지 잡힌다.
 const CONTENT_LOOKBACK_DAYS = 90;
+// 2차: 1차 구간 이전에도 조회 이력이 있었는지 훨씬 넓게(최대 3년) 확인한다. 콘텐츠가 한동안
+// 조회가 없다가 1차 구간 중간에 다시 조회되면 그 중간 날짜를 최초 노출일로 오인할 수 있어서,
+// 특정 날짜에 걸렸는지 여부와 무관하게 모든 콘텐츠에 대해 확인한다. 단, 월 단위로 조회해
+// (일 단위로 3년을 통째로 조회하면 콘텐츠당 행 수가 너무 많아진다) 비용을 낮춘다.
+const CONTENT_DEEP_LOOKBACK_DAYS = 1095;
 
 export interface ContentScrollFunnel {
   p25: number;
@@ -730,6 +736,46 @@ export async function getContentItems(period: Period): Promise<ContentItem[]> {
     if (!existing || row.date < existing) minDateByTitle.set(row.pageTitle, row.date);
   }
 
+  // 2차: 1차 구간(lookbackStart) 이전, 최대 3년 전까지 월 단위로 조회 이력이 있는지 확인한다.
+  const deepLookbackStart = addDays(period.startDate, -CONTENT_DEEP_LOOKBACK_DAYS);
+  const monthRows = await runReport({
+    property: 'web',
+    dimensions: [{ name: 'pageTitle' }, { name: 'yearMonth' }],
+    metrics: [{ name: 'screenPageViews' }],
+    startDate: deepLookbackStart,
+    endDate: lookbackStart,
+    dimensionFilter: categoryFilter,
+  });
+
+  const minMonthByTitle = new Map<string, string>();
+  for (const row of monthRows) {
+    const existing = minMonthByTitle.get(row.pageTitle);
+    if (!existing || row.yearMonth < existing) minMonthByTitle.set(row.pageTitle, row.yearMonth);
+  }
+
+  // 3차: 2차에서 1차 구간보다 이른 달에 조회 이력이 발견된 타이틀만, 그 달들을 포함하는
+  // 범위로 다시 일 단위 조회해 정확한 날짜를 찾는다(해당 타이틀만 걸러서 조회하므로
+  // 범위를 넓게 잡아도 비용이 크지 않다).
+  const titlesWithOlderHistory = [...minMonthByTitle.keys()];
+  const deepLookbackStartYmd = deepLookbackStart.replace(/-/g, '');
+
+  if (titlesWithOlderHistory.length > 0) {
+    const earliestMonth = [...minMonthByTitle.values()].sort()[0];
+    const refineStart = `${earliestMonth.slice(0, 4)}-${earliestMonth.slice(4, 6)}-01`;
+    const refineRows = await runReport({
+      property: 'web',
+      dimensions: [{ name: 'pageTitle' }, { name: 'date' }],
+      metrics: [{ name: 'screenPageViews' }],
+      startDate: refineStart,
+      endDate: lookbackStart,
+      dimensionFilter: inListFilter('pageTitle', titlesWithOlderHistory),
+    });
+    for (const row of refineRows) {
+      const existing = minDateByTitle.get(row.pageTitle);
+      if (!existing || row.date < existing) minDateByTitle.set(row.pageTitle, row.date);
+    }
+  }
+
   const scrollByTitle = new Map<string, ContentScrollFunnel>();
   for (const row of scrollRows) {
     const entry = scrollByTitle.get(row.pageTitle) ?? { p25: 0, p50: 0, p75: 0, p100: 0 };
@@ -742,20 +788,22 @@ export async function getContentItems(period: Period): Promise<ContentItem[]> {
     scrollByTitle.set(row.pageTitle, entry);
   }
 
-  const lookbackStartYyyymmdd = lookbackStart.replace(/-/g, '');
-
   const items: ContentItem[] = [];
   for (const row of metricRows) {
     const category = CONTENT_CATEGORIES.find((c) => row.pageTitle.startsWith(c.prefix));
     if (!category) continue;
     const rawDate = minDateByTitle.get(row.pageTitle);
     if (!rawDate) continue;
+    // 월 단위 정밀 재조회까지 거쳤는데도(최대 3년) 그 조회 범위의 첫 달에 여전히 걸려 있으면
+    // 그 이전 이력이 더 있을 수 있다는 뜻이므로 그때만 발행일을 불확실한 것으로 본다.
+    const earliestMonth = minMonthByTitle.get(row.pageTitle);
+    const isUnknownDate = earliestMonth !== undefined && earliestMonth === deepLookbackStartYmd.slice(0, 6);
     items.push({
       pageTitle: row.pageTitle,
       category: category.label,
       title: row.pageTitle.slice(category.prefix.length).trim(),
       publishDate: `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`,
-      isUnknownDate: rawDate === lookbackStartYyyymmdd,
+      isUnknownDate,
       viewEvent: toNum(row.screenPageViews),
       viewUsers: toNum(row.activeUsers),
       avgSessionSeconds: toNum(row.averageSessionDuration),
