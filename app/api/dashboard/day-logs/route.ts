@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getContentItems } from '@/lib/queries';
-import { loadContentPublishOverrides } from '@/lib/contentPublishOverrides';
+import { loadContentPublishOverrides, loadExcludedContentTitles } from '@/lib/contentPublishOverrides';
 import { CONTENT_CATEGORIES } from '@/lib/contentCategories';
 import { fetchPushSentHistory, isNotionConfigured, NotionNotConfiguredError } from '@/lib/notion';
 
@@ -19,18 +19,22 @@ export async function GET(req: NextRequest) {
   let contentLogs: { category: string; title: string }[] = [];
   try {
     const period = { startDate: date, endDate: date, compareStartDate: date, compareEndDate: date };
-    const [items, overrides] = await Promise.all([getContentItems(period), loadContentPublishOverrides()]);
+    const [items, overrides, excluded] = await Promise.all([
+      getContentItems(period),
+      loadContentPublishOverrides(),
+      loadExcludedContentTitles(),
+    ]);
 
     // GA4 조회 범위(발행일 기준 최근 90일) 안에서 자연스럽게 이 날짜로 잡히는 항목.
-    // override가 있는 pageTitle은 아래에서 별도로 처리하므로 여기서는 제외한다.
+    // override가 있거나 삭제(숨김) 처리된 pageTitle은 제외한다.
     const naturalMatches = items
-      .filter((it) => !overrides[it.pageTitle] && !it.isUnknownDate && it.publishDate === date)
+      .filter((it) => !overrides[it.pageTitle] && !excluded.has(it.pageTitle) && !it.isUnknownDate && it.publishDate === date)
       .map((it) => ({ category: it.category, title: it.title }));
 
     // 수기로 발행일을 이 날짜로 지정한 항목. 원래 활동 이력이 GA4 조회 범위보다 오래돼 위 목록에
     // 안 잡히더라도(예: 콘텐츠 현황에서 옛 콘텐츠의 발행일을 최근으로 수정한 경우) 항상 반영한다.
     const overrideMatches = Object.entries(overrides)
-      .filter(([, overrideDate]) => overrideDate === date)
+      .filter(([pageTitle, overrideDate]) => overrideDate === date && !excluded.has(pageTitle))
       .map(([pageTitle]) => {
         const category = CONTENT_CATEGORIES.find((c) => pageTitle.startsWith(c.prefix));
         if (!category) return null;

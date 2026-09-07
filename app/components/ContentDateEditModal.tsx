@@ -9,14 +9,17 @@ export function ContentDateEditModal({
   maxSelectableDate,
   onClose,
   onSave,
+  onDelete,
 }: {
   item: ContentItem;
   maxSelectableDate: string;
   onClose: () => void;
   onSave: (pageTitle: string, date: string) => Promise<void>;
+  onDelete: (pageTitle: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(item.publishDate);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
@@ -32,6 +35,19 @@ export function ContentDateEditModal({
       setError(e instanceof Error ? e.message : '저장에 실패했어요.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`"${item.title}" 콘텐츠를 목록에서 삭제할까요?`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await onDelete(item.pageTitle);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '삭제에 실패했어요.');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -107,39 +123,58 @@ export function ContentDateEditModal({
           <div style={{ fontSize: 12.5, color: '#D92D20', fontWeight: 600, marginTop: 10 }}>{error}</div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 18 }}>
           <button
-            onClick={onClose}
+            onClick={handleDelete}
+            disabled={deleting || saving}
             style={{
-              border: `1px solid ${colors.border}`,
+              border: '1px solid #FDA29B',
               background: '#fff',
-              color: colors.textBody,
-              padding: '9px 18px',
+              color: '#D92D20',
+              padding: '9px 16px',
               borderRadius: 9,
               fontSize: 13,
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: deleting || saving ? 'default' : 'pointer',
+              opacity: deleting || saving ? 0.6 : 1,
             }}
           >
-            취소
+            {deleting ? '삭제 중...' : '삭제'}
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              border: 'none',
-              background: colors.primary,
-              color: '#fff',
-              padding: '9px 20px',
-              borderRadius: 9,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: saving ? 'default' : 'pointer',
-              opacity: saving ? 0.6 : 1,
-            }}
-          >
-            {saving ? '저장 중...' : '저장'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={onClose}
+              style={{
+                border: `1px solid ${colors.border}`,
+                background: '#fff',
+                color: colors.textBody,
+                padding: '9px 18px',
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              취소
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || deleting}
+              style={{
+                border: 'none',
+                background: colors.primary,
+                color: '#fff',
+                padding: '9px 20px',
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: saving || deleting ? 'default' : 'pointer',
+                opacity: saving || deleting ? 0.6 : 1,
+              }}
+            >
+              {saving ? '저장 중...' : '저장'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

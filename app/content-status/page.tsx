@@ -262,6 +262,18 @@ export default function ContentStatusPage() {
     await fetchData();
   }
 
+  async function handleDeleteContent(pageTitle: string) {
+    const res = await fetch('/api/content-status/exclude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageTitle }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? '삭제에 실패했어요.');
+    setEditingItem(null);
+    await fetchData();
+  }
+
   const appliedRangeText = preset === 'custom' ? `${appliedStart} ~ ${appliedEnd}` : PRESET_LABEL[preset];
   const filterRangeText = data ? `${formatShortRange(data.period.startDate, data.period.endDate)} 발행` : `${appliedRangeText} 발행`;
 
@@ -510,6 +522,7 @@ export default function ContentStatusPage() {
             maxSelectableDate={maxSelectableDate}
             onClose={() => setEditingItem(null)}
             onSave={handleSaveDate}
+            onDelete={handleDeleteContent}
           />
         )}
       </div>
