@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolvePeriod, isDateRangeError, getMaxSelectableDate, addDays, Preset } from '@/lib/ga4';
-import { getContentItems, ContentItem } from '@/lib/queries';
+import { getContentItems, applyContentOverrides, ContentItem } from '@/lib/queries';
 import { loadContentPublishOverrides, loadExcludedContentTitles } from '@/lib/contentPublishOverrides';
 
 export const dynamic = 'force-dynamic';
@@ -23,14 +23,7 @@ export async function GET(req: NextRequest) {
       loadExcludedContentTitles(),
     ]);
 
-    // 수기로 지정한 발행일이 있으면 GA4 추정치보다 우선하고, 삭제(숨김) 처리된 콘텐츠는 제외한다.
-    const items = rawItems
-      .filter((it) => !excluded.has(it.pageTitle))
-      .map((it) => {
-        const override = overrides[it.pageTitle];
-        if (!override) return it;
-        return { ...it, publishDate: override, isUnknownDate: false };
-      });
+    const items = applyContentOverrides(rawItems, overrides, excluded);
 
     const inRange = items.filter(
       (it) => !it.isUnknownDate && it.publishDate >= period.startDate && it.publishDate <= period.endDate

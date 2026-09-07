@@ -9,10 +9,12 @@ export function AiAnalysisCard({
   trend,
   rangeLabel,
   summary,
+  period,
 }: {
   trend: TrendPoint[];
   rangeLabel: string;
   summary: SummaryData;
+  period: { startDate: string; endDate: string };
 }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AiAnalysisResult | null>(null);
@@ -25,7 +27,7 @@ export function AiAnalysisCard({
       const res = await fetch('/api/ai-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trend, rangeLabel, summary }),
+        body: JSON.stringify({ trend, rangeLabel, summary, period }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'AI 분석에 실패했어요.');

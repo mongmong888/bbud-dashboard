@@ -179,6 +179,30 @@ export async function getHourlyMaxInRange(startDate: string, endDate: string): P
   return rows.reduce((max, row) => Math.max(max, toNum(row.activeUsers)), 0);
 }
 
+// 조회 기간 전체의 날짜별 시간대(0~23시) 활성 사용자수. AI 분석에서 일자별 유입 패턴을 함께 보는 데 쓰인다.
+// 날짜 키는 GA4 원본 형식(YYYYMMDD)으로, TrendPoint.date와 바로 매칭된다.
+export async function getHourlyByDateInRange(startDate: string, endDate: string): Promise<Record<string, HourlyPoint[]>> {
+  const rows = await runReport({
+    property: 'web',
+    dimensions: [{ name: 'date' }, { name: 'hour' }],
+    metrics: [{ name: 'activeUsers' }],
+    startDate,
+    endDate,
+  });
+
+  const byDate = new Map<string, Map<number, number>>();
+  for (const row of rows) {
+    if (!byDate.has(row.date)) byDate.set(row.date, new Map());
+    byDate.get(row.date)!.set(Number(row.hour), toNum(row.activeUsers));
+  }
+
+  const result: Record<string, HourlyPoint[]> = {};
+  for (const [date, hourMap] of byDate) {
+    result[date] = Array.from({ length: 24 }, (_, hour) => ({ hour, users: hourMap.get(hour) ?? 0 }));
+  }
+  return result;
+}
+
 // ---------- 3 & 4. 배너 / 팝업 성과 ----------
 
 export interface EventIdRow {
@@ -812,4 +836,20 @@ export async function getContentItems(period: Period): Promise<ContentItem[]> {
   }
 
   return items;
+}
+
+// 수기로 지정한 발행일이 있으면 GA4 추정치보다 우선하고, 삭제(숨김) 처리된 콘텐츠는 제외한다.
+// content-status/ai-analysis 라우트에서 공통으로 쓴다.
+export function applyContentOverrides(
+  items: ContentItem[],
+  overrides: Record<string, string>,
+  excluded: Set<string>
+): ContentItem[] {
+  return items
+    .filter((it) => !excluded.has(it.pageTitle))
+    .map((it) => {
+      const override = overrides[it.pageTitle];
+      if (!override) return it;
+      return { ...it, publishDate: override, isUnknownDate: false };
+    });
 }

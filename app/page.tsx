@@ -220,7 +220,7 @@ export default function DashboardPage() {
             issueDates={new Set(Object.keys(issues))}
             onBarClick={(point) => setModalPoint(point)}
           >
-            <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} summary={data.summary} />
+            <AiAnalysisCard trend={data.trend} rangeLabel={appliedRangeText} summary={data.summary} period={data.period} />
           </TrendChart>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
