@@ -10,6 +10,7 @@ import {
 } from '@/lib/queries';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 function mergePeriods(rows: SimpleIdRow[], periods: Map<string, ActivePeriod>): AdRow[] {
   return rows.map((row) => ({ ...row, period: periods.get(row.name) ?? null }));
