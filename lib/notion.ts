@@ -1,5 +1,7 @@
 // 노션 "UTM 링크 생성기" 페이지 안에 있는 "UTM 링크 발송 이력" 표(단순 table 블록, 데이터베이스 아님)에서
 // 푸시 발송 이력을 읽어온다. 실제 컬럼: 푸시 발송 일시 / 발송 내용 / utm_campaign / 랜딩 메뉴 / 랜딩 콘텐츠 / 발송자.
+// 표가 페이지 바로 아래에 있다고 가정하지 않는다 — 월별 토글 등으로 묶여서 중첩돼 있을 수 있어
+// 페이지 하위 블록 전체를 재귀적으로 훑어 table 블록을 전부 찾는다.
 const NOTION_API_VERSION = '2022-06-28';
 
 export interface PushSentRecord {
@@ -72,36 +74,27 @@ function toIsoDate(sentAt: string): string | null {
   return `20${yy}-${mm}-${dd}`;
 }
 
-export async function fetchPushSentHistory(): Promise<PushSentRecord[]> {
-  const pageId = process.env.NOTION_PUSH_PAGE_ID;
-  if (!process.env.NOTION_API_KEY || !pageId) {
-    throw new NotionNotConfiguredError('NOTION_API_KEY / NOTION_PUSH_PAGE_ID 환경변수가 설정되지 않았습니다.');
+// blockId 하위를 재귀적으로 훑어 table 블록을 전부 찾는다(토글/리스트 등 어디에 중첩돼 있어도 찾아낸다).
+async function findAllTableBlocks(blockId: string): Promise<NotionBlock[]> {
+  const children = await fetchAllChildren(blockId);
+  const tables: NotionBlock[] = [];
+  for (const block of children) {
+    if (block.type === 'table') {
+      tables.push(block);
+    } else if (block.has_children) {
+      tables.push(...(await findAllTableBlocks(block.id)));
+    }
   }
+  return tables;
+}
 
-  const pageBlocks = await fetchAllChildren(pageId);
-  const tableBlock = pageBlocks.find((b) => b.type === 'table');
-  if (!tableBlock) {
-    throw new Error('노션 페이지에서 발송 이력 표를 찾지 못했어요.');
-  }
-
-  const rowBlocks = await fetchAllChildren(tableBlock.id);
-  const tableRows = rowBlocks
-    .filter((b) => b.type === 'table_row' && b.table_row)
-    .map((b) => b.table_row!.cells.map(cellText));
-
-  if (tableRows.length < 2) return [];
-
-  const headers = tableRows[0];
+function parseTableRows(headers: string[], tableRows: string[][]): PushSentRecord[] {
   const sentAtIdx = findColumnIndex(headers, COLUMN_ALIASES.sentAt);
   const contentIdx = findColumnIndex(headers, COLUMN_ALIASES.content);
   const utmIdx = findColumnIndex(headers, COLUMN_ALIASES.utmCampaign);
-
-  if (sentAtIdx === -1 || utmIdx === -1) {
-    throw new Error('노션 표에서 "푸시 발송 일시" 또는 "utm_campaign" 컬럼을 찾지 못했어요.');
-  }
+  if (sentAtIdx === -1 || utmIdx === -1) return [];
 
   return tableRows
-    .slice(1)
     .filter((r) => r[sentAtIdx] && r[utmIdx])
     .map((r) => ({
       sentAt: r[sentAtIdx],
@@ -109,4 +102,30 @@ export async function fetchPushSentHistory(): Promise<PushSentRecord[]> {
       content: contentIdx !== -1 ? r[contentIdx] : '',
       utmCampaign: r[utmIdx],
     }));
+}
+
+export async function fetchPushSentHistory(): Promise<PushSentRecord[]> {
+  const pageId = process.env.NOTION_PUSH_PAGE_ID;
+  if (!process.env.NOTION_API_KEY || !pageId) {
+    throw new NotionNotConfiguredError('NOTION_API_KEY / NOTION_PUSH_PAGE_ID 환경변수가 설정되지 않았습니다.');
+  }
+
+  const tableBlocks = await findAllTableBlocks(pageId);
+  if (tableBlocks.length === 0) {
+    throw new Error('노션 페이지에서 발송 이력 표를 찾지 못했어요.');
+  }
+
+  const records: PushSentRecord[] = [];
+  for (const tableBlock of tableBlocks) {
+    const rowBlocks = await fetchAllChildren(tableBlock.id);
+    const tableRows = rowBlocks
+      .filter((b) => b.type === 'table_row' && b.table_row)
+      .map((b) => b.table_row!.cells.map(cellText));
+    if (tableRows.length < 2) continue;
+
+    // 헤더가 기대한 컬럼(발송 일시/utm_campaign)과 다른 표는 발송 이력 표가 아니므로 건너뛴다.
+    records.push(...parseTableRows(tableRows[0], tableRows.slice(1)));
+  }
+
+  return records;
 }
