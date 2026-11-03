@@ -43,12 +43,32 @@ export default function MembersPage() {
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      setUploadError('xlsx 파일만 업로드할 수 있어요.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     setUploading(true);
     setUploadError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/members/upload', { method: 'POST', body: formData });
+      // 엑셀은 4.5MB를 넘으면 Vercel 함수가 요청 자체를 거부하므로, 파일은 이 브라우저에서 직접 읽고
+      // 집계한 결과만 서버로 보낸다. (엑셀 라이브러리는 용량이 커서 업로드할 때만 불러온다.)
+      const { parseWorkbook, ColumnValidationError } = await import('@/lib/memberParser');
+      let metrics;
+      try {
+        metrics = parseWorkbook(await file.arrayBuffer());
+      } catch (err) {
+        setUploadError(
+          err instanceof ColumnValidationError ? err.message : '파일을 처리하지 못했어요. 파일 형식을 확인해 주세요.'
+        );
+        return;
+      }
+
+      const res = await fetch('/api/members/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, metrics }),
+      });
       const json = await res.json();
       if (!res.ok) {
         setUploadError(json.error ?? '업로드에 실패했어요.');
