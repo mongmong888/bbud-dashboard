@@ -100,7 +100,25 @@ function ratioFromCounts(counts: Map<string, number>): RatioItem[] {
 }
 
 export function parseWorkbook(data: ArrayBuffer | Uint8Array): MemberMetrics {
-  const wb = XLSX.read(data, { type: 'array' });
+  return metricsFromWorkbook(XLSX.read(data, { type: 'array' }));
+}
+
+// 한국어 CSV는 엑셀에서 저장하면 UTF-8이 아니라 CP949(EUC-KR)인 경우가 많아서, UTF-8로 먼저 읽어보고
+// 깨지면 EUC-KR로 다시 읽는다. (UTF-8 BOM은 TextDecoder가 알아서 제거한다.)
+function decodeCsv(data: ArrayBuffer | Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(data);
+  } catch {
+    return new TextDecoder('euc-kr').decode(data);
+  }
+}
+
+export function parseCsv(data: ArrayBuffer | Uint8Array): MemberMetrics {
+  // raw: 날짜·숫자처럼 보이는 값을 엑셀 일련번호 등으로 바꾸지 않고 셀에 적힌 문자열 그대로 둔다.
+  return metricsFromWorkbook(XLSX.read(decodeCsv(data), { type: 'string', raw: true }));
+}
+
+function metricsFromWorkbook(wb: XLSX.WorkBook): MemberMetrics {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows: RawRow[] = XLSX.utils.sheet_to_json(ws, { defval: null });
 

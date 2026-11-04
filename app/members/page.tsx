@@ -43,8 +43,9 @@ export default function MembersPage() {
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      setUploadError('xlsx 파일만 업로드할 수 있어요.');
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+    if (!isCsv && !file.name.toLowerCase().endsWith('.xlsx')) {
+      setUploadError('xlsx 또는 csv 파일만 업로드할 수 있어요.');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -53,10 +54,11 @@ export default function MembersPage() {
     try {
       // 엑셀은 4.5MB를 넘으면 Vercel 함수가 요청 자체를 거부하므로, 파일은 이 브라우저에서 직접 읽고
       // 집계한 결과만 서버로 보낸다. (엑셀 라이브러리는 용량이 커서 업로드할 때만 불러온다.)
-      const { parseWorkbook, ColumnValidationError } = await import('@/lib/memberParser');
+      const { parseWorkbook, parseCsv, ColumnValidationError } = await import('@/lib/memberParser');
       let metrics;
       try {
-        metrics = parseWorkbook(await file.arrayBuffer());
+        const buffer = await file.arrayBuffer();
+        metrics = isCsv ? parseCsv(buffer) : parseWorkbook(buffer);
       } catch (err) {
         setUploadError(
           err instanceof ColumnValidationError ? err.message : '파일을 처리하지 못했어요. 파일 형식을 확인해 주세요.'
@@ -107,7 +109,7 @@ export default function MembersPage() {
         </div>
       </div>
       <div>
-        <input ref={fileInputRef} type="file" accept=".xlsx" onChange={handleFileSelect} style={{ display: 'none' }} id="member-upload-input" />
+        <input ref={fileInputRef} type="file" accept=".xlsx,.csv" onChange={handleFileSelect} style={{ display: 'none' }} id="member-upload-input" />
         <label
           htmlFor="member-upload-input"
           style={{
@@ -123,7 +125,7 @@ export default function MembersPage() {
             display: 'inline-block',
           }}
         >
-          {uploading ? '업로드 중...' : '파일 선택 (.xlsx)'}
+          {uploading ? '업로드 중...' : '파일 선택 (.xlsx, .csv)'}
         </label>
       </div>
     </div>
